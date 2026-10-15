@@ -1,0 +1,45 @@
+---
+sonarr_api_headers:
+  X-Api-Key: "{{ sonarr_api_key }}"
+
+# The listed series with their defaults, in the format backup saves (built as
+# JSON: a template made of several parts gives a string)
+sonarr_series_desired: "{{ sonarr_series_desired_json | from_json }}"
+sonarr_series_desired_json: >-
+  [{% for series in sonarr_series | sort(attribute='tvdb_id') %}
+  {{ {'title': series.title | default(''),
+      'tvdb_id': series.tvdb_id | int,
+      'quality_profile': series.quality_profile | default(sonarr_quality_profile),
+      'root_folder': series.root_folder | default(sonarr_root_folders | first),
+      'monitored': series.monitored | default(true) | bool,
+      'season_folder': series.season_folder | default(true) | bool} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]
+
+# Download clients as {name, implementation, enable, priority, fields}: fields
+# complete (Sonarr's defaults for those not given), without the empty ones and
+# the passwords (masked by the API). The listed ones, and the live ones; they
+# need sonarr_download_client_schema and sonarr_download_clients_api (the API's
+# lists of templates and of clients).
+sonarr_download_clients_desired: "{{ sonarr_download_clients_desired_json | from_json }}"
+sonarr_download_clients_desired_json: >-
+  [{% for client in sonarr_download_clients | sort(attribute='name') %}
+  {% set schema = (sonarr_download_client_schema | selectattr('implementation', 'equalto', client.implementation) | first).fields
+                  | rejectattr('type', 'equalto', 'password') | selectattr('value', 'defined') | list %}
+  {{ {'name': client.name,
+      'implementation': client.implementation,
+      'enable': client.enable | default(true) | bool,
+      'priority': client.priority | default(1) | int,
+      'fields': dict(schema | map(attribute='name') | zip(schema | map(attribute='value')))
+                | combine(client.fields | default({})) | dict2items | rejectattr('value', 'none') | items2dict} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]
+sonarr_download_clients_state: "{{ sonarr_download_clients_state_json | from_json }}"
+sonarr_download_clients_state_json: >-
+  [{% for client in sonarr_download_clients_api | sort(attribute='name') %}
+  {% set fields = client.fields | rejectattr('type', 'equalto', 'password') | selectattr('value', 'defined') | list %}
+  {{ {'name': client.name,
+      'implementation': client.implementation,
+      'enable': client.enable,
+      'priority': client.priority,
+      'fields': dict(fields | map(attribute='name') | zip(fields | map(attribute='value')))
+                | dict2items | rejectattr('value', 'none') | items2dict} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]

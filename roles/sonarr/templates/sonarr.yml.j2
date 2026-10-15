@@ -1,0 +1,5 @@
+---
+# Sonarr on {{ inventory_hostname }}, saved by the sonarr role (backup), in
+# the format of its variables (inventory/group_vars/<group>/sonarr.yml).
+# The password is in Bitwarden (sonarr_admin_password).
+{{ sonarr_state | to_nice_yaml(indent=2, sort_keys=false) }}

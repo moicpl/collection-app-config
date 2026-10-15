@@ -1,0 +1,36 @@
+---
+# Prowlarr is stopped. Everything but the logs.
+- name: snapshot.yml | Create the snapshot directory
+  ansible.builtin.file:
+    path: "{{ prowlarr_snapshot_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: snapshot.yml | Save the current state
+  ansible.builtin.command:
+    argv:
+      - tar
+      - --create
+      - --gzip
+      - --file={{ prowlarr_snapshot_dir }}/{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}.tar.gz
+      - --directory=/
+      - --exclude={{ prowlarr_config_dir | relpath('/') }}/logs
+      - --ignore-failed-read
+      - "{{ prowlarr_config_dir | relpath('/') }}"
+  changed_when: true
+
+- name: snapshot.yml | Find the snapshots
+  ansible.builtin.find:
+    paths: "{{ prowlarr_snapshot_dir }}"
+    patterns: "*.tar.gz"
+  register: prowlarr_snapshots_found
+
+- name: snapshot.yml | Remove the oldest snapshots
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (prowlarr_snapshots_found.files | sort(attribute='mtime', reverse=true))[prowlarr_snapshot_keep | int :] }}"
+  loop_control:
+    label: "{{ item.path }}"

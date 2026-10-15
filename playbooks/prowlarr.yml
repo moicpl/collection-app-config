@@ -1,0 +1,75 @@
+---
+# Prowlarr's state on the [nixos_arr] machines, as code: the login comes from
+# inventory/group_vars/nixos_arr/prowlarr.yml. Run from nixos_playbooks/, after
+# arr_nix.yml:
+#   ansible-playbook config/prowlarr.yml -e app_action=<action>
+#
+#   configure  set the login
+#   backup     save the live login settings in the app state store (appstate/,
+#              prowlarr.yml, same format as the inventory) and show their
+#              differences from the inventory, i.e. changes made in Prowlarr's UI
+#   default    erase Prowlarr's config and database and start it empty, with the
+#              login only; needs -e app_wipe=true
+#
+# Secrets in Bitwarden: prowlarr_admin_password, generated on the first run.
+
+- name: Manage Prowlarr's state
+  hosts: nixos_arr
+  gather_facts: false
+
+  vars:
+    nixos_ssh_private_key: "{{ bitwarden_secrets[ssh_key_name ~ '_private_key'] }}"
+
+  pre_tasks:
+    - name: prowlarr.yml | Check the action
+      ansible.builtin.assert:
+        that:
+          - app_action | default('') in ['default', 'configure', 'backup']
+        fail_msg: "Pass -e app_action=default|configure|backup."
+        quiet: true
+      tags: always
+
+    - name: prowlarr.yml | Create the login password in Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: put
+        bitwarden_secret_name: prowlarr_admin_password
+        bitwarden_secret_content: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=24) }}"
+        bitwarden_secret_note: "Prowlarr login ({{ prowlarr_admin_username }}) on [nixos_arr], created by moicpl.app_config.prowlarr"
+        bitwarden_secret_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/prowlarr.yml"
+      when: prowlarr_admin_password_bws_id is not defined
+      tags: always
+
+    - name: prowlarr.yml | Get the secrets from Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: get
+        bitwarden_secret_name: "{{ item }}"
+      loop:
+        - "{{ ssh_key_name }}_private_key"
+        - prowlarr_admin_password
+      tags: always
+
+    - name: prowlarr.yml | Connect to the host
+      ansible.builtin.include_role:
+        name: moicpl.nixos.nixos
+        tasks_from: connect.yml
+        apply:
+          tags: always
+      tags: always
+
+  tasks:
+    - name: prowlarr.yml | Manage Prowlarr's state
+      ansible.builtin.include_role:
+        name: moicpl.app_config.prowlarr
+      vars:
+        prowlarr_action: "{{ app_action }}"
+        prowlarr_wipe: "{{ app_wipe | default(false) | bool }}"
+        prowlarr_admin_password: "{{ bitwarden_secrets.prowlarr_admin_password }}"
+        prowlarr_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/prowlarr"

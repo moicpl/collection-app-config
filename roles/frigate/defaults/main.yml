@@ -1,0 +1,96 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  write config.yaml from the variables below, the camera and
+#              restream passwords, and set the admin password
+#   backup     save the running config.yaml in frigate_store_dir (encrypted) and
+#              show how it differs from the one the variables give (UI edits)
+#   default    erase the config and the database, start Frigate empty (its own
+#              default config) with the admin password only
+frigate_action: ""
+# default erases data: the run stops unless this is true
+frigate_wipe: false
+# default also erases the recordings, clips and exports (frigate_media_dir)
+frigate_wipe_media: false
+
+# Secrets, read by the playbook from Bitwarden
+# Password of the admin user, the user Frigate creates on its first start
+frigate_admin_password: ""
+# Password of the go2rtc RTSP restream (port 8554), user frigate_restream_username
+frigate_restream_password: ""
+# Camera passwords: Bitwarden secret name (a camera's password_secret) -> value
+frigate_camera_passwords: {}
+
+# App state store on the controller: this host's frigate directory, the age
+# recipient (public key) files are encrypted to, and the private key (to compare
+# a new backup with the stored one)
+frigate_store_dir: ""
+frigate_age_recipient: ""
+frigate_age_key: ""
+
+# Container and host paths, as set up by home_management.yml
+frigate_container: frigate
+frigate_config_dir: /var/lib/frigate/config     # /config
+frigate_media_dir: /var/lib/frigate/media       # /media/frigate
+frigate_secrets_dir: /var/lib/frigate/secrets   # /run/secrets: FRIGATE_* files
+# Copies of the state taken on the host before default erases it; the last
+# frigate_snapshot_keep are kept
+frigate_snapshot_dir: /var/lib/appstate/frigate/snapshots
+frigate_snapshot_keep: 3
+
+# config.yaml (https://docs.frigate.video/configuration/reference). The version
+# of the config format, so Frigate doesn't rewrite the file to migrate it.
+frigate_config_version: "0.18-0"
+frigate_mqtt:
+  enabled: false
+# Intel iGPU: OpenVINO object detection, VAAPI video decoding
+frigate_detectors:
+  ov:
+    type: openvino
+    device: GPU
+frigate_model:
+  width: 300
+  height: 300
+  input_tensor: nhwc
+  input_pixel_format: bgr
+  path: /openvino-model/ssdlite_mobilenet_v2.xml
+  labelmap_path: /openvino-model/coco_91cl_bkgr.txt
+frigate_ffmpeg:
+  hwaccel_args: preset-vaapi
+frigate_record:
+  enabled: true
+  motion:
+    days: 7
+  alerts:
+    retain:
+      days: 30
+  detections:
+    retain:
+      days: 30
+frigate_snapshots:
+  enabled: true
+  retain:
+    default: 30
+frigate_objects:
+  track:
+    - person
+    - car
+    - dog
+    - cat
+frigate_restream_username: frigate
+
+# Cameras. Each stream becomes a go2rtc stream (the record stream named like
+# the camera, so the live view uses it; the others <camera>_<stream>), and the
+# camera reads them back from the restream:
+#   - name: front_door
+#     username: admin                               # camera login
+#     password_secret: camera_front_door_password   # Bitwarden secret name
+#     streams:                                      # {credentials}: username:password
+#       main: rtsp://{credentials}@172.16.66.50:554/h264Preview_01_main
+#       sub: rtsp://{credentials}@172.16.66.50:554/h264Preview_01_sub
+#     record_stream: main        # default: the first stream
+#     detect_stream: sub         # default: the last stream
+#     detect: {width: 640, height: 360, fps: 5}
+#     config: {}                 # merged into the camera as is (zones, masks, objects...)
+frigate_cameras: []
+# Merged last into config.yaml (recursively), for anything not covered above
+frigate_config_extra: {}

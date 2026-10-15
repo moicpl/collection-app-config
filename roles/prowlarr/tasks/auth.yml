@@ -1,0 +1,59 @@
+---
+# Prowlarr keeps only a hash of the password: a login attempt tells whether it
+# is the one wanted. A failed login is redirected with loginFailed.
+- name: auth.yml | Try the login
+  ansible.builtin.uri:
+    url: "{{ prowlarr_url }}/login?returnUrl=%2F"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ prowlarr_admin_username }}"
+      password: "{{ prowlarr_admin_password }}"
+    follow_redirects: none
+    status_code: 302
+  register: prowlarr_login
+  check_mode: false
+  no_log: true
+
+- name: auth.yml | Read the security settings
+  ansible.builtin.uri:
+    url: "{{ prowlarr_url }}/api/v1/config/host"
+    headers: "{{ prowlarr_api_headers }}"
+  register: prowlarr_host_config
+  check_mode: false
+
+- name: auth.yml | Set the login
+  ansible.builtin.uri:
+    url: "{{ prowlarr_url }}/api/v1/config/host/{{ prowlarr_host_config.json.id }}"
+    method: PUT
+    headers: "{{ prowlarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ prowlarr_host_config.json | combine({
+           'authenticationMethod': 'forms',
+           'authenticationRequired': prowlarr_authentication_required,
+           'username': prowlarr_admin_username,
+           'password': prowlarr_admin_password,
+           'passwordConfirmation': prowlarr_admin_password}) }}
+    status_code: [200, 202]
+  changed_when: true
+  when: >-
+    'loginFailed' in prowlarr_login.location | default('loginFailed')
+    or prowlarr_host_config.json.authenticationMethod != 'forms'
+    or prowlarr_host_config.json.authenticationRequired != prowlarr_authentication_required
+    or prowlarr_host_config.json.username != prowlarr_admin_username
+  notify: Restart Prowlarr
+  no_log: true
+
+# The new login takes effect at the restart
+- name: auth.yml | Restart Prowlarr for the new login
+  ansible.builtin.meta: flush_handlers
+
+- name: auth.yml | Wait for Prowlarr
+  ansible.builtin.uri:
+    url: "{{ prowlarr_url }}/ping"
+  register: prowlarr_ping
+  until: prowlarr_ping.status == 200
+  retries: 30
+  delay: 5
+  check_mode: false

@@ -1,0 +1,71 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  set the login, add the missing root folders and series, and
+#              update the settings of the listed series
+#   backup     save the live settings in sonarr_store_dir (sonarr.yml, in the
+#              format of the variables below) and show how they differ from
+#              the variables (changes made in Sonarr's UI)
+#   default    erase Sonarr's config and database, start it empty with the
+#              login only
+sonarr_action: ""
+# default erases data: the run stops unless this is true
+sonarr_wipe: false
+
+# Login (forms), required everywhere or only from outside the local networks
+# (enabled or disabledForLocalAddresses)
+sonarr_admin_username: admin
+# Secret, read by the playbook from Bitwarden
+sonarr_admin_password: ""
+sonarr_authentication_required: enabled
+
+# Root folders, as seen in the container (added, never removed)
+sonarr_root_folders: []
+# Quality profile of the series that don't name one (Sonarr's built-in ones:
+# Any, SD, HD-720p, HD-1080p, Ultra-HD, HD - 720p/1080p)
+sonarr_quality_profile: HD-1080p
+# Episodes monitored when a series is added: all, future, missing, existing,
+# firstSeason, lastSeason, pilot, none...
+sonarr_series_monitor: all
+# Search for the missing episodes when a series is added
+sonarr_series_search: false
+
+# Series, by TVDB ID (https://thetvdb.com, or Sonarr's search). Added when
+# missing; quality_profile, monitored and season_folder are kept in line.
+# Series in Sonarr that aren't listed are left alone (backup reports them).
+#   - title: The Simpsons                  # label only
+#     tvdb_id: 71663
+#     quality_profile: HD-1080p            # default: sonarr_quality_profile
+#     root_folder: /data/media/tv          # when added; default: the first root folder
+#     monitored: true
+#     season_folder: true
+#     monitor: all                         # when added; default: sonarr_series_monitor
+#     search: false                        # when added; default: sonarr_series_search
+sonarr_series: []
+
+# Download clients, by name: added when missing, kept in line. fields: the
+# client's settings, by their API name (configure lists them on a typo); the
+# others keep Sonarr's defaults. Secret fields (passwords) aren't set: they
+# would need Bitwarden. Clients in Sonarr that aren't listed are left alone.
+#   - name: Transmission
+#     implementation: Transmission         # Transmission, QBittorrent, Sabnzbd...
+#     enable: true
+#     priority: 1
+#     fields:
+#       host: transmission
+#       port: 9091
+#       urlBase: /transmission/
+#       tvCategory: tv-sonarr
+sonarr_download_clients: []
+
+# App state store on the controller: this host's sonarr directory
+sonarr_store_dir: ""
+
+# Container and host paths, as set up by arr_nix.yml
+sonarr_container: sonarr
+sonarr_port: 8989
+sonarr_url: "http://127.0.0.1:{{ sonarr_port }}"
+sonarr_config_dir: /var/lib/sonarr              # /config
+# Copies of the state taken on the host before default erases it; the last
+# sonarr_snapshot_keep are kept
+sonarr_snapshot_dir: /var/lib/appstate/sonarr/snapshots
+sonarr_snapshot_keep: 3

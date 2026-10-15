@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: frigate
+  author: moicpl
+  description: Manage the state of a Frigate NVR container (config as code, admin password, backup, factory reset)
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+dependencies: []

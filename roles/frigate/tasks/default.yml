@@ -1,0 +1,45 @@
+---
+- name: default.yml | Check that erasing Frigate's state is allowed
+  ansible.builtin.assert:
+    that:
+      - frigate_wipe | bool
+    fail_msg: >-
+      default erases Frigate's config, database and passwords on
+      {{ inventory_hostname }}{{ ', and its recordings' if frigate_wipe_media | bool else '' }}:
+      pass -e app_wipe=true.
+    quiet: true
+
+- name: default.yml | Stop Frigate
+  ansible.builtin.systemd_service:
+    name: "podman-{{ frigate_container }}.service"
+    state: stopped
+
+- name: default.yml | Snapshot the current state
+  ansible.builtin.include_tasks: snapshot.yml
+
+- name: default.yml | Erase the state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ [frigate_config_dir, frigate_secrets_dir] + ([frigate_media_dir] if frigate_wipe_media | bool else []) }}"
+
+- name: default.yml | Recreate the state directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ frigate_config_dir }}", mode: "0755"}
+    - {path: "{{ frigate_secrets_dir }}", mode: "0700"}
+    - {path: "{{ frigate_media_dir }}", mode: "0755"}
+
+# Frigate writes its default config and creates the admin user
+- name: default.yml | Start Frigate
+  ansible.builtin.systemd_service:
+    name: "podman-{{ frigate_container }}.service"
+    state: started
+
+- name: default.yml | Set the admin password
+  ansible.builtin.include_tasks: admin.yml

@@ -1,0 +1,36 @@
+---
+argument_specs:
+  main:
+    short_description: Manage the state of a Prowlarr container
+    description:
+      - configure sets the login.
+      - backup saves the live login settings as YAML and shows their drift from the variables.
+      - default erases Prowlarr's state (needs prowlarr_wipe) and starts it empty with the login.
+    options:
+      prowlarr_action:
+        type: str
+        required: true
+        choices: [default, configure, backup]
+        description: What the run does.
+      prowlarr_wipe:
+        type: bool
+        default: false
+        description: Allow default to erase the state.
+      prowlarr_admin_username:
+        type: str
+        default: admin
+        description: Login user.
+      prowlarr_admin_password:
+        type: str
+        required: true
+        no_log: true
+        description: Password of the login user.
+      prowlarr_authentication_required:
+        type: str
+        default: enabled
+        choices: [enabled, disabledForLocalAddresses]
+        description: Where the login is required.
+      prowlarr_store_dir:
+        type: str
+        required: true
+        description: This host's prowlarr directory in the app state store, on the controller.

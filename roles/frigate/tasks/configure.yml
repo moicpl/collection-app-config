@@ -1,0 +1,56 @@
+---
+# Secrets first: the config check below substitutes them.
+- name: configure.yml | Write the camera and restream passwords
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ frigate_secrets_dir }}/{{ item.key }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ frigate_secret_files | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart Frigate
+  no_log: true
+
+- name: configure.yml | Find the password files
+  ansible.builtin.find:
+    paths: "{{ frigate_secrets_dir }}"
+    patterns: FRIGATE_*
+  register: frigate_secrets_found
+
+- name: configure.yml | Remove the passwords no longer used
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ frigate_secrets_found.files | map(attribute='path')
+       | reject('in', frigate_secret_files.keys() | map('regex_replace', '^', frigate_secrets_dir ~ '/'))
+       | list }}
+  notify: Restart Frigate
+
+# Frigate reads config.yml first when there is one, and creates config.yaml
+- name: configure.yml | Remove a config.yml that would hide config.yaml
+  ansible.builtin.file:
+    path: "{{ frigate_config_dir }}/config.yml"
+    state: absent
+  notify: Restart Frigate
+
+# Checked by Frigate itself in the running container, which falls back to a
+# "safe mode" (exit 0) on an invalid config, hence the check of the output
+- name: configure.yml | Write config.yaml
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ frigate_config_dir }}/config.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: >-
+      sh -c 'podman cp "$1" {{ frigate_container }}:/tmp/config.candidate.yaml &&
+      out=$(podman exec --workdir /opt/frigate --env CONFIG_FILE=/tmp/config.candidate.yaml
+      {{ frigate_container }} python3 -u -m frigate --validate-config 2>&1);
+      rc=$?; echo "$out"; [ "$rc" -eq 0 ] && ! echo "$out" | grep -q "not valid"' validate %s
+  notify: Restart Frigate
+
+- name: configure.yml | Set the admin password
+  ansible.builtin.include_tasks: admin.yml

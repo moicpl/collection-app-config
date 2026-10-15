@@ -1,0 +1,6 @@
+---
+- name: configure.yml | Connect to Prowlarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: configure.yml | Set the login
+  ansible.builtin.include_tasks: auth.yml

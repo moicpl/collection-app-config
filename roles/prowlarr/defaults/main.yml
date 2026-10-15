@@ -1,0 +1,31 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  set the login
+#   backup     save the live login settings in prowlarr_store_dir
+#              (prowlarr.yml, in the format of the variables below) and show
+#              how they differ from the variables (changes made in Prowlarr's UI)
+#   default    erase Prowlarr's config and database, start it empty with the
+#              login only
+prowlarr_action: ""
+# default erases data: the run stops unless this is true
+prowlarr_wipe: false
+
+# Login (forms), required everywhere or only from outside the local networks
+# (enabled or disabledForLocalAddresses)
+prowlarr_admin_username: admin
+# Secret, read by the playbook from Bitwarden
+prowlarr_admin_password: ""
+prowlarr_authentication_required: enabled
+
+# App state store on the controller: this host's prowlarr directory
+prowlarr_store_dir: ""
+
+# Container and host paths, as set up by arr_nix.yml
+prowlarr_container: prowlarr
+prowlarr_port: 9696
+prowlarr_url: "http://127.0.0.1:{{ prowlarr_port }}"
+prowlarr_config_dir: /var/lib/prowlarr          # /config
+# Copies of the state taken on the host before default erases it; the last
+# prowlarr_snapshot_keep are kept
+prowlarr_snapshot_dir: /var/lib/appstate/prowlarr/snapshots
+prowlarr_snapshot_keep: 3

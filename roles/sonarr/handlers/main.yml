@@ -1,0 +1,7 @@
+---
+- name: main.yml | Restart Sonarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ sonarr_container }}.service"
+    state: restarted
+  become: true
+  listen: Restart Sonarr

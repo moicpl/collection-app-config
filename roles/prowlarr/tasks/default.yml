@@ -1,0 +1,43 @@
+---
+- name: default.yml | Check that erasing Prowlarr's state is allowed
+  ansible.builtin.assert:
+    that:
+      - prowlarr_wipe | bool
+    fail_msg: >-
+      default erases Prowlarr's config and database (indexers, apps, settings,
+      history) on {{ inventory_hostname }}: pass -e app_wipe=true.
+    quiet: true
+
+- name: default.yml | Stop Prowlarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ prowlarr_container }}.service"
+    state: stopped
+
+- name: default.yml | Snapshot the current state
+  ansible.builtin.include_tasks: snapshot.yml
+
+- name: default.yml | Erase the state
+  ansible.builtin.file:
+    path: "{{ prowlarr_config_dir }}"
+    state: absent
+
+# The container gives it to its own user (PUID) at start
+- name: default.yml | Recreate the config directory
+  ansible.builtin.file:
+    path: "{{ prowlarr_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Prowlarr creates a new database, config.xml and API key
+- name: default.yml | Start Prowlarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ prowlarr_container }}.service"
+    state: started
+
+- name: default.yml | Connect to Prowlarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: default.yml | Set the login
+  ansible.builtin.include_tasks: auth.yml

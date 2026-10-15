@@ -1,0 +1,21 @@
+---
+# Frigate's state on a host whose container comes from home_management.yml:
+# frigate_action picks tasks/<action>.yml.
+- name: main.yml | Manage Frigate's state
+  become: true
+  block:
+    - name: main.yml | Check that the Frigate container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ frigate_container }}.service"
+      register: frigate_unit
+      changed_when: false
+      check_mode: false
+      failed_when: frigate_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ frigate_action }} action
+      ansible.builtin.include_tasks: "{{ frigate_action }}.yml"

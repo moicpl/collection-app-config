@@ -1,0 +1,7 @@
+---
+- name: main.yml | Restart Prowlarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ prowlarr_container }}.service"
+    state: restarted
+  become: true
+  listen: Restart Prowlarr

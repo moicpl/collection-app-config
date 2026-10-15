@@ -1,0 +1,3 @@
+---
+prowlarr_api_headers:
+  X-Api-Key: "{{ prowlarr_api_key }}"

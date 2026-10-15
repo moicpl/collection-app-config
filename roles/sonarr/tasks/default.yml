@@ -1,0 +1,43 @@
+---
+- name: default.yml | Check that erasing Sonarr's state is allowed
+  ansible.builtin.assert:
+    that:
+      - sonarr_wipe | bool
+    fail_msg: >-
+      default erases Sonarr's config and database (series, settings, history) on
+      {{ inventory_hostname }}, not the media files: pass -e app_wipe=true.
+    quiet: true
+
+- name: default.yml | Stop Sonarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ sonarr_container }}.service"
+    state: stopped
+
+- name: default.yml | Snapshot the current state
+  ansible.builtin.include_tasks: snapshot.yml
+
+- name: default.yml | Erase the state
+  ansible.builtin.file:
+    path: "{{ sonarr_config_dir }}"
+    state: absent
+
+# The container gives it to its own user (PUID) at start
+- name: default.yml | Recreate the config directory
+  ansible.builtin.file:
+    path: "{{ sonarr_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Sonarr creates a new database, config.xml and API key
+- name: default.yml | Start Sonarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ sonarr_container }}.service"
+    state: started
+
+- name: default.yml | Connect to Sonarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: default.yml | Set the login
+  ansible.builtin.include_tasks: auth.yml

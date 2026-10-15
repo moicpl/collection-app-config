@@ -1,0 +1,59 @@
+---
+# Sonarr keeps only a hash of the password: a login attempt tells whether it
+# is the one wanted. A failed login is redirected with loginFailed.
+- name: auth.yml | Try the login
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/login?returnUrl=%2F"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ sonarr_admin_username }}"
+      password: "{{ sonarr_admin_password }}"
+    follow_redirects: none
+    status_code: 302
+  register: sonarr_login
+  check_mode: false
+  no_log: true
+
+- name: auth.yml | Read the security settings
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/config/host"
+    headers: "{{ sonarr_api_headers }}"
+  register: sonarr_host_config
+  check_mode: false
+
+- name: auth.yml | Set the login
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/config/host/{{ sonarr_host_config.json.id }}"
+    method: PUT
+    headers: "{{ sonarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ sonarr_host_config.json | combine({
+           'authenticationMethod': 'forms',
+           'authenticationRequired': sonarr_authentication_required,
+           'username': sonarr_admin_username,
+           'password': sonarr_admin_password,
+           'passwordConfirmation': sonarr_admin_password}) }}
+    status_code: [200, 202]
+  changed_when: true
+  when: >-
+    'loginFailed' in sonarr_login.location | default('loginFailed')
+    or sonarr_host_config.json.authenticationMethod != 'forms'
+    or sonarr_host_config.json.authenticationRequired != sonarr_authentication_required
+    or sonarr_host_config.json.username != sonarr_admin_username
+  notify: Restart Sonarr
+  no_log: true
+
+# The new login takes effect at the restart
+- name: auth.yml | Restart Sonarr for the new login
+  ansible.builtin.meta: flush_handlers
+
+- name: auth.yml | Wait for Sonarr
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/ping"
+  register: sonarr_ping
+  until: sonarr_ping.status == 200
+  retries: 30
+  delay: 5
+  check_mode: false

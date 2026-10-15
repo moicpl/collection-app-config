@@ -1,0 +1,182 @@
+---
+- name: configure.yml | Connect to Sonarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: configure.yml | Set the login
+  ansible.builtin.include_tasks: auth.yml
+
+- name: configure.yml | Read the root folders
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/rootfolder"
+    headers: "{{ sonarr_api_headers }}"
+  register: sonarr_root_folders_live
+  check_mode: false
+
+# Sonarr checks that the folder exists in the container
+- name: configure.yml | Add the missing root folders
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/rootfolder"
+    method: POST
+    headers: "{{ sonarr_api_headers }}"
+    body_format: json
+    body:
+      path: "{{ item }}"
+    status_code: 201
+  changed_when: true
+  loop: "{{ sonarr_root_folders | difference(sonarr_root_folders_live.json | map(attribute='path')) }}"
+
+- name: configure.yml | Read the quality profiles and series
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/{{ item }}"
+    headers: "{{ sonarr_api_headers }}"
+  loop:
+    - qualityprofile
+    - series
+  register: sonarr_lists
+  check_mode: false
+
+- name: configure.yml | Index the quality profiles and series
+  ansible.builtin.set_fact:
+    sonarr_profile_ids: "{{ dict(sonarr_lists.results[0].json | map(attribute='name') | zip(sonarr_lists.results[0].json | map(attribute='id'))) }}"
+    sonarr_series_live: "{{ dict(sonarr_lists.results[1].json | map(attribute='tvdbId') | zip(sonarr_lists.results[1].json)) }}"
+
+- name: configure.yml | Check the quality profiles
+  ansible.builtin.assert:
+    that:
+      - sonarr_series_desired | map(attribute='quality_profile') | difference(sonarr_profile_ids.keys()) | length == 0
+    fail_msg: >-
+      Unknown quality profile:
+      {{ sonarr_series_desired | map(attribute='quality_profile') | difference(sonarr_profile_ids.keys()) | join(', ') }}
+      (Sonarr has {{ sonarr_profile_ids.keys() | join(', ') }}).
+    quiet: true
+
+# Sonarr adds a series from its lookup result (TVDB metadata)
+- name: configure.yml | Look up the series to add
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/series/lookup?term=tvdb:{{ item.tvdb_id }}"
+    headers: "{{ sonarr_api_headers }}"
+  loop: "{{ sonarr_series_desired | rejectattr('tvdb_id', 'in', sonarr_series_live.keys()) }}"
+  loop_control:
+    label: "{{ item.tvdb_id }} {{ item.title }}"
+  register: sonarr_lookups
+  failed_when: sonarr_lookups.json | default([]) | length == 0
+  check_mode: false
+
+- name: configure.yml | Add the missing series
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/series"
+    method: POST
+    headers: "{{ sonarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ item.json[0] | combine({
+           'qualityProfileId': sonarr_profile_ids[item.item.quality_profile],
+           'rootFolderPath': item.item.root_folder,
+           'monitored': item.item.monitored,
+           'seasonFolder': item.item.season_folder,
+           'addOptions': {
+             'monitor': series.monitor | default(sonarr_series_monitor),
+             'searchForMissingEpisodes': series.search | default(sonarr_series_search) | bool}}) }}
+    status_code: 201
+  changed_when: true
+  loop: "{{ sonarr_lookups.results }}"
+  loop_control:
+    label: "{{ item.json[0].title }} ({{ item.json[0].year }})"
+  vars:
+    series: "{{ sonarr_series | selectattr('tvdb_id', 'equalto', item.item.tvdb_id) | first }}"
+
+- name: configure.yml | Update the listed series that differ
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/series/{{ live.id }}"
+    method: PUT
+    headers: "{{ sonarr_api_headers }}"
+    body_format: json
+    body: "{{ live | combine(wanted) }}"
+    status_code: [200, 202]
+  changed_when: true
+  loop: "{{ sonarr_series_desired | selectattr('tvdb_id', 'in', sonarr_series_live.keys()) }}"
+  loop_control:
+    label: "{{ item.tvdb_id }} {{ live.title }}"
+  vars:
+    live: "{{ sonarr_series_live[item.tvdb_id] }}"
+    wanted:
+      qualityProfileId: "{{ sonarr_profile_ids[item.quality_profile] }}"
+      monitored: "{{ item.monitored }}"
+      seasonFolder: "{{ item.season_folder }}"
+  when: live.qualityProfileId != wanted.qualityProfileId or live.monitored != wanted.monitored or live.seasonFolder != wanted.seasonFolder
+
+- name: configure.yml | Read the download clients and their templates
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/{{ item }}"
+    headers: "{{ sonarr_api_headers }}"
+  loop:
+    - downloadclient
+    - downloadclient/schema
+  register: sonarr_download_client_lists
+  check_mode: false
+
+- name: configure.yml | Index the download clients and their templates
+  ansible.builtin.set_fact:
+    sonarr_download_clients_api: "{{ sonarr_download_client_lists.results[0].json }}"
+    sonarr_download_client_schema: "{{ sonarr_download_client_lists.results[1].json }}"
+
+- name: configure.yml | Check the download clients
+  ansible.builtin.assert:
+    that:
+      - item.implementation in sonarr_download_client_schema | map(attribute='implementation')
+      - >-
+        item.fields | default({}) | list
+        | difference(sonarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation)
+                     | map(attribute='fields') | flatten | map(attribute='name'))
+        | length == 0
+    fail_msg: >-
+      Download client {{ item.name }}: unknown implementation or field. Sonarr has
+      {{ sonarr_download_client_schema | map(attribute='implementation') | join(', ') }};
+      fields of {{ item.implementation }}:
+      {{ sonarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation)
+         | map(attribute='fields') | flatten | map(attribute='name') | join(', ') }}.
+    quiet: true
+  loop: "{{ sonarr_download_clients }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Sonarr tests the connection before it saves. The fields not listed go back
+# to their defaults, except the passwords, kept as they are.
+- name: configure.yml | Add or update the download clients that differ
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/downloadclient{{ ('/' ~ live.id) if live else '' }}"
+    method: "{{ 'PUT' if live else 'POST' }}"
+    headers: "{{ sonarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ base | combine({'name': item.name, 'enable': item.enable, 'priority': item.priority,
+                         'fields': fields_json | from_json}) }}
+    status_code: [200, 201, 202]
+  changed_when: true
+  loop: "{{ sonarr_download_clients_desired }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    live: "{{ sonarr_download_clients_api | selectattr('name', 'equalto', item.name) | first | default({}) }}"
+    base: "{{ live or (sonarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation) | first) }}"
+    fields_json: >-
+      [{% for field in base.fields %}
+      {{ field | combine({'value': item.fields[field.name] if field.name in item.fields
+                                   else field.value | default(none) if field.type == 'password' else none}) | to_json }}{{ '' if loop.last else ',' }}
+      {% endfor %}]
+  when: sonarr_download_clients_state | selectattr('name', 'equalto', item.name) | list != [item]
+
+- name: configure.yml | Report the series not in the inventory
+  ansible.builtin.debug:
+    msg: >-
+      In Sonarr but not in the inventory, left alone:
+      {{ sonarr_series_live.values() | rejectattr('tvdbId', 'in', sonarr_series_desired | map(attribute='tvdb_id'))
+         | map(attribute='title') | join(', ') }}
+  when: sonarr_series_live.keys() | difference(sonarr_series_desired | map(attribute='tvdb_id')) | length > 0
+
+- name: configure.yml | Report the download clients not in the inventory
+  ansible.builtin.debug:
+    msg: >-
+      In Sonarr but not in the inventory, left alone:
+      {{ sonarr_download_clients_api | map(attribute='name') | difference(sonarr_download_clients | map(attribute='name')) | join(', ') }}
+  when: sonarr_download_clients_api | map(attribute='name') | difference(sonarr_download_clients | map(attribute='name')) | length > 0

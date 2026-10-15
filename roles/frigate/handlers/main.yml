@@ -1,0 +1,7 @@
+---
+- name: main.yml | Restart Frigate
+  ansible.builtin.systemd_service:
+    name: "podman-{{ frigate_container }}.service"
+    state: restarted
+  become: true
+  listen: Restart Frigate

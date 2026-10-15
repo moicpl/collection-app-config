@@ -1,0 +1,76 @@
+---
+# Sonarr's state on the [nixos_arr] machines, as code: the login, root folders
+# and series come from inventory/group_vars/nixos_arr/sonarr.yml. Run from
+# nixos_playbooks/, after arr_nix.yml:
+#   ansible-playbook config/sonarr.yml -e app_action=<action>
+#
+#   configure  set the login, add the missing root folders and series, and put
+#              back the settings of the listed series
+#   backup     save the live settings in the app state store (appstate/,
+#              sonarr.yml, same format as the inventory) and show their
+#              differences from the inventory, i.e. changes made in Sonarr's UI
+#   default    erase Sonarr's config and database (not the media) and start it
+#              empty, with the login only; needs -e app_wipe=true
+#
+# Secrets in Bitwarden: sonarr_admin_password, generated on the first run.
+
+- name: Manage Sonarr's state
+  hosts: nixos_arr
+  gather_facts: false
+
+  vars:
+    nixos_ssh_private_key: "{{ bitwarden_secrets[ssh_key_name ~ '_private_key'] }}"
+
+  pre_tasks:
+    - name: sonarr.yml | Check the action
+      ansible.builtin.assert:
+        that:
+          - app_action | default('') in ['default', 'configure', 'backup']
+        fail_msg: "Pass -e app_action=default|configure|backup."
+        quiet: true
+      tags: always
+
+    - name: sonarr.yml | Create the login password in Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: put
+        bitwarden_secret_name: sonarr_admin_password
+        bitwarden_secret_content: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=24) }}"
+        bitwarden_secret_note: "Sonarr login ({{ sonarr_admin_username }}) on [nixos_arr], created by moicpl.app_config.sonarr"
+        bitwarden_secret_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/sonarr.yml"
+      when: sonarr_admin_password_bws_id is not defined
+      tags: always
+
+    - name: sonarr.yml | Get the secrets from Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: get
+        bitwarden_secret_name: "{{ item }}"
+      loop:
+        - "{{ ssh_key_name }}_private_key"
+        - sonarr_admin_password
+      tags: always
+
+    - name: sonarr.yml | Connect to the host
+      ansible.builtin.include_role:
+        name: moicpl.nixos.nixos
+        tasks_from: connect.yml
+        apply:
+          tags: always
+      tags: always
+
+  tasks:
+    - name: sonarr.yml | Manage Sonarr's state
+      ansible.builtin.include_role:
+        name: moicpl.app_config.sonarr
+      vars:
+        sonarr_action: "{{ app_action }}"
+        sonarr_wipe: "{{ app_wipe | default(false) | bool }}"
+        sonarr_admin_password: "{{ bitwarden_secrets.sonarr_admin_password }}"
+        sonarr_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/sonarr"

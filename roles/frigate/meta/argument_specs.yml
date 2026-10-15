@@ -1,0 +1,59 @@
+---
+argument_specs:
+  main:
+    short_description: Manage the state of a Frigate container
+    description:
+      - configure writes config.yaml from the variables and sets the admin password.
+      - backup saves the running config.yaml, encrypted with sops, and shows its drift from the variables.
+      - default erases Frigate's state (needs frigate_wipe) and starts it empty with the admin password.
+    options:
+      frigate_action:
+        type: str
+        required: true
+        choices: [default, configure, backup]
+        description: What the run does.
+      frigate_wipe:
+        type: bool
+        default: false
+        description: Allow default to erase the state.
+      frigate_wipe_media:
+        type: bool
+        default: false
+        description: default also erases the recordings.
+      frigate_admin_password:
+        type: str
+        required: true
+        no_log: true
+        description: Password of the admin user.
+      frigate_restream_password:
+        type: str
+        required: true
+        no_log: true
+        description: Password of the go2rtc RTSP restream.
+      frigate_camera_passwords:
+        type: dict
+        default: {}
+        no_log: true
+        description: Camera passwords, by Bitwarden secret name.
+      frigate_store_dir:
+        type: str
+        required: true
+        description: This host's frigate directory in the app state store, on the controller.
+      frigate_age_recipient:
+        type: str
+        required: true
+        description: age public key the stored files are encrypted to.
+      frigate_age_key:
+        type: str
+        required: true
+        no_log: true
+        description: age private key of the store.
+      frigate_cameras:
+        type: list
+        elements: dict
+        default: []
+        description: Cameras (see defaults/main.yml).
+      frigate_config_extra:
+        type: dict
+        default: {}
+        description: Merged last into config.yaml.

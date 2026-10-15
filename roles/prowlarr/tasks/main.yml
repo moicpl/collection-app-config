@@ -1,0 +1,21 @@
+---
+# Prowlarr's state on a host whose container comes from arr_nix.yml:
+# prowlarr_action picks tasks/<action>.yml.
+- name: main.yml | Manage Prowlarr's state
+  become: true
+  block:
+    - name: main.yml | Check that the Prowlarr container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ prowlarr_container }}.service"
+      register: prowlarr_unit
+      changed_when: false
+      check_mode: false
+      failed_when: prowlarr_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ prowlarr_action }} action
+      ansible.builtin.include_tasks: "{{ prowlarr_action }}.yml"

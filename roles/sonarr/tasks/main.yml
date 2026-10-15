@@ -1,0 +1,21 @@
+---
+# Sonarr's state on a host whose container comes from arr_nix.yml:
+# sonarr_action picks tasks/<action>.yml.
+- name: main.yml | Manage Sonarr's state
+  become: true
+  block:
+    - name: main.yml | Check that the Sonarr container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ sonarr_container }}.service"
+      register: sonarr_unit
+      changed_when: false
+      check_mode: false
+      failed_when: sonarr_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ sonarr_action }} action
+      ansible.builtin.include_tasks: "{{ sonarr_action }}.yml"

@@ -1,0 +1,93 @@
+---
+- name: backup.yml | Connect to Sonarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: backup.yml | Read the live settings
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/api/v3/{{ item }}"
+    headers: "{{ sonarr_api_headers }}"
+  loop:
+    - config/host
+    - rootfolder
+    - qualityprofile
+    - series
+    - downloadclient
+    - downloadclient/schema
+  register: sonarr_lists
+  check_mode: false
+
+- name: backup.yml | Index the download clients and their templates
+  ansible.builtin.set_fact:
+    sonarr_download_clients_api: "{{ sonarr_lists.results[4].json }}"
+    sonarr_download_client_schema: "{{ sonarr_lists.results[5].json }}"
+
+# Same format as the variables, so the file can be compared with them, or
+# copied into the inventory
+- name: backup.yml | Gather the live settings
+  ansible.builtin.set_fact:
+    sonarr_state_live:
+      sonarr_admin_username: "{{ host.username }}"
+      sonarr_authentication_required: "{{ host.authenticationRequired }}"
+      sonarr_root_folders: "{{ sonarr_lists.results[1].json | map(attribute='path') | sort }}"
+      sonarr_series: "{{ series_json | from_json }}"
+      sonarr_download_clients: "{{ sonarr_download_clients_state }}"
+  vars:
+    # Built as JSON: a template made of several parts gives a string
+    series_json: >-
+      [{% for series in sonarr_lists.results[3].json | sort(attribute='tvdbId') %}
+      {{ {'title': series.title,
+          'tvdb_id': series.tvdbId,
+          'quality_profile': profiles[series.qualityProfileId],
+          'root_folder': series.rootFolderPath | default(series.path | dirname) | regex_replace('/$', ''),
+          'monitored': series.monitored,
+          'season_folder': series.seasonFolder} | to_json }}{{ '' if loop.last else ',' }}
+      {% endfor %}]
+    host: "{{ sonarr_lists.results[0].json }}"
+    profiles: "{{ dict(sonarr_lists.results[2].json | map(attribute='id') | zip(sonarr_lists.results[2].json | map(attribute='name'))) }}"
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ sonarr_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# Plain text: no secrets in it
+- name: backup.yml | Save the live settings in the store
+  ansible.builtin.template:
+    src: sonarr.yml.j2
+    dest: "{{ sonarr_store_dir }}/sonarr.yml"
+    mode: "0644"
+  vars:
+    sonarr_state: "{{ sonarr_state_live }}"
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Sonarr's UI, to
+# port to the inventory first
+- name: backup.yml | Compare the live settings with the inventory
+  ansible.builtin.template:
+    src: sonarr.yml.j2
+    dest: "{{ sonarr_store_dir }}/sonarr.yml"
+    mode: "0644"
+  vars:
+    sonarr_state:
+      sonarr_admin_username: "{{ sonarr_admin_username }}"
+      sonarr_authentication_required: "{{ sonarr_authentication_required }}"
+      sonarr_root_folders: "{{ sonarr_root_folders | sort }}"
+      sonarr_series: "{{ sonarr_series_desired }}"
+      sonarr_download_clients: "{{ sonarr_download_clients_desired }}"
+  check_mode: true
+  diff: true
+  register: sonarr_drift
+  delegate_to: localhost
+  become: false
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      Sonarr's settings differ from the inventory (diff above: - live, + inventory).
+      Move the changes to inventory/group_vars/nixos_arr/sonarr.yml: the next
+      configure run reverts the series settings and adds what is missing.
+  when: sonarr_drift is changed

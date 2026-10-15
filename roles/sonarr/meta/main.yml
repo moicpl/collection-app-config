@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: sonarr
+  author: moicpl
+  description: Manage the state of a Sonarr container (login, root folders and series as code, backup, factory reset)
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+dependencies: []

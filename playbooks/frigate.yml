@@ -1,0 +1,126 @@
+---
+# Frigate's state on the [nixos_home] machines, as code: config.yaml is built
+# from inventory/group_vars/nixos_home/frigate.yml (cameras, detector,
+# recording). Run from nixos_playbooks/, after home_management.yml:
+#   ansible-playbook config/frigate.yml -e app_action=<action>
+#
+#   configure  write config.yaml and the camera passwords, set the admin password
+#   backup     save the running config.yaml in the app state store (appstate/,
+#              encrypted) and show its differences from the inventory, i.e.
+#              changes made in Frigate's UI, which configure replaces
+#   default    erase Frigate's config, database and passwords and start it
+#              empty, with the admin password only; needs -e app_wipe=true
+#              (recordings too with -e frigate_wipe_media=true)
+#
+# Secrets in Bitwarden: frigate_admin_password and frigate_restream_password,
+# generated on the first run; each camera's password_secret, asked on the
+# first run that lists it; appstate_age_key (appstate_key.yml).
+
+- name: Manage Frigate's state
+  hosts: nixos_home
+  gather_facts: false
+
+  vars:
+    nixos_ssh_private_key: "{{ bitwarden_secrets[ssh_key_name ~ '_private_key'] }}"
+    frigate_password_secrets: "{{ frigate_cameras | selectattr('password_secret', 'defined') | map(attribute='password_secret') | unique }}"
+    frigate_secrets_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_home/frigate.yml"
+
+  pre_tasks:
+    - name: frigate.yml | Check the action
+      ansible.builtin.assert:
+        that:
+          - app_action | default('') in ['default', 'configure', 'backup']
+        fail_msg: "Pass -e app_action=default|configure|backup."
+        quiet: true
+      tags: always
+
+    # Generated once, letters and digits only (they go into RTSP URLs)
+    - name: frigate.yml | Create the Frigate passwords in Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: put
+        bitwarden_secret_name: "{{ item }}"
+        bitwarden_secret_content: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}"
+        bitwarden_secret_note: "{{ item }} of Frigate on [nixos_home], created by moicpl.app_config.frigate"
+        bitwarden_secret_id_file: "{{ frigate_secrets_file }}"
+      loop:
+        - frigate_admin_password
+        - frigate_restream_password
+      when: lookup('ansible.builtin.vars', item ~ '_bws_id', default='') | length == 0
+      tags: always
+
+    # Set on the cameras: asked for once, then read from Bitwarden
+    - name: frigate.yml | Ask for the camera passwords missing from Bitwarden
+      ansible.builtin.pause:
+        prompt: "Camera password, stored in Bitwarden as {{ item }}"
+        echo: false
+      loop: "{{ frigate_password_secrets }}"
+      when: lookup('ansible.builtin.vars', item ~ '_bws_id', default='') | length == 0
+      register: frigate_password_input
+      no_log: true
+      tags: always
+
+    - name: frigate.yml | Check the camera passwords entered
+      ansible.builtin.assert:
+        that:
+          - >-
+            frigate_password_input.results | default([]) | rejectattr('skipped', 'defined')
+            | map(attribute='user_input') | select('==', '') | list | length == 0
+        fail_msg: "Enter each camera password: run the playbook from an interactive terminal."
+        quiet: true
+      tags: always
+
+    - name: frigate.yml | Store the camera passwords in Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: put
+        bitwarden_secret_name: "{{ item.item }}"
+        bitwarden_secret_content: "{{ item.user_input }}"
+        bitwarden_secret_note: "Camera password for Frigate, entered in moicpl.app_config.frigate"
+        bitwarden_secret_id_file: "{{ frigate_secrets_file }}"
+      loop: "{{ frigate_password_input.results | default([]) | rejectattr('skipped', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.item }}"
+      no_log: true
+      tags: always
+
+    - name: frigate.yml | Get the secrets from Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: get
+        bitwarden_secret_name: "{{ item }}"
+      loop: >-
+        {{ [ssh_key_name ~ '_private_key', 'appstate_age_key', 'frigate_admin_password', 'frigate_restream_password']
+           + frigate_password_secrets }}
+      tags: always
+
+    - name: frigate.yml | Connect to the host
+      ansible.builtin.include_role:
+        name: moicpl.nixos.nixos
+        tasks_from: connect.yml
+        apply:
+          tags: always
+      tags: always
+
+  tasks:
+    - name: frigate.yml | Manage Frigate's state
+      ansible.builtin.include_role:
+        name: moicpl.app_config.frigate
+      vars:
+        frigate_action: "{{ app_action }}"
+        frigate_wipe: "{{ app_wipe | default(false) | bool }}"
+        frigate_admin_password: "{{ bitwarden_secrets.frigate_admin_password }}"
+        frigate_restream_password: "{{ bitwarden_secrets.frigate_restream_password }}"
+        frigate_camera_passwords: "{{ dict(frigate_password_secrets | zip(frigate_password_secrets | map('extract', bitwarden_secrets))) }}"
+        frigate_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/frigate"
+        frigate_age_recipient: "{{ appstate_age_public_key }}"
+        frigate_age_key: "{{ bitwarden_secrets.appstate_age_key }}"

@@ -1,0 +1,38 @@
+---
+# Sonarr is stopped. Everything but the logs and the posters (MediaCover),
+# which Sonarr downloads again.
+- name: snapshot.yml | Create the snapshot directory
+  ansible.builtin.file:
+    path: "{{ sonarr_snapshot_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: snapshot.yml | Save the current state
+  ansible.builtin.command:
+    argv:
+      - tar
+      - --create
+      - --gzip
+      - --file={{ sonarr_snapshot_dir }}/{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}.tar.gz
+      - --directory=/
+      - --exclude={{ sonarr_config_dir | relpath('/') }}/MediaCover
+      - --exclude={{ sonarr_config_dir | relpath('/') }}/logs
+      - --ignore-failed-read
+      - "{{ sonarr_config_dir | relpath('/') }}"
+  changed_when: true
+
+- name: snapshot.yml | Find the snapshots
+  ansible.builtin.find:
+    paths: "{{ sonarr_snapshot_dir }}"
+    patterns: "*.tar.gz"
+  register: sonarr_snapshots_found
+
+- name: snapshot.yml | Remove the oldest snapshots
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (sonarr_snapshots_found.files | sort(attribute='mtime', reverse=true))[sonarr_snapshot_keep | int :] }}"
+  loop_control:
+    label: "{{ item.path }}"

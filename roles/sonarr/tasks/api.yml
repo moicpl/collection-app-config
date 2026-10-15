@@ -1,0 +1,21 @@
+---
+# Sonarr answers once started; its API key is in config.xml, which it writes
+# on its first start.
+- name: api.yml | Wait for Sonarr
+  ansible.builtin.uri:
+    url: "{{ sonarr_url }}/ping"
+  register: sonarr_ping
+  until: sonarr_ping.status == 200
+  retries: 30
+  delay: 5
+  check_mode: false
+
+- name: api.yml | Read Sonarr's config.xml
+  ansible.builtin.slurp:
+    src: "{{ sonarr_config_dir }}/config.xml"
+  register: sonarr_config_xml
+
+- name: api.yml | Use Sonarr's API key
+  ansible.builtin.set_fact:
+    sonarr_api_key: "{{ sonarr_config_xml.content | b64decode | regex_search('<ApiKey>(\\w+)</ApiKey>', '\\1') | first }}"
+  no_log: true

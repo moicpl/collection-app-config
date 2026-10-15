@@ -1,0 +1,57 @@
+---
+- name: backup.yml | Connect to Prowlarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: backup.yml | Read the security settings
+  ansible.builtin.uri:
+    url: "{{ prowlarr_url }}/api/v1/config/host"
+    headers: "{{ prowlarr_api_headers }}"
+  register: prowlarr_host_config
+  check_mode: false
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ prowlarr_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# Same format as the variables, so the file can be compared with them, or
+# copied into the inventory. Plain text: no secrets in it.
+- name: backup.yml | Save the live settings in the store
+  ansible.builtin.template:
+    src: prowlarr.yml.j2
+    dest: "{{ prowlarr_store_dir }}/prowlarr.yml"
+    mode: "0644"
+  vars:
+    prowlarr_state:
+      prowlarr_admin_username: "{{ prowlarr_host_config.json.username }}"
+      prowlarr_authentication_required: "{{ prowlarr_host_config.json.authenticationRequired }}"
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Prowlarr's UI, to
+# port to the inventory first
+- name: backup.yml | Compare the live settings with the inventory
+  ansible.builtin.template:
+    src: prowlarr.yml.j2
+    dest: "{{ prowlarr_store_dir }}/prowlarr.yml"
+    mode: "0644"
+  vars:
+    prowlarr_state:
+      prowlarr_admin_username: "{{ prowlarr_admin_username }}"
+      prowlarr_authentication_required: "{{ prowlarr_authentication_required }}"
+  check_mode: true
+  diff: true
+  register: prowlarr_drift
+  delegate_to: localhost
+  become: false
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      Prowlarr's settings differ from the inventory (diff above: - live, + inventory).
+      Move the changes to inventory/group_vars/nixos_arr/prowlarr.yml: the next
+      configure run reverts them.
+  when: prowlarr_drift is changed

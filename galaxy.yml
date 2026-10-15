@@ -1,0 +1,27 @@
+---
+namespace: moicpl
+name: app_config
+version: 1.0.0
+readme: README.md
+authors:
+  - moicpl
+description: >-
+  State of the apps running in lab1's NixOS containers (Frigate, Sonarr,
+  Prowlarr) as code: configure, backup to the app state store, factory reset.
+license:
+  - MIT
+tags:
+  - nixos
+  - frigate
+  - sonarr
+  - prowlarr
+repository: https://github.com/moicpl/collection-app-config
+# moicpl.nixos: the playbooks log in through its nixos role (connect.yml).
+# The bitwarden role isn't a collection: the playbooks find it in the calling
+# project's roles_path (nixos_playbooks/roles/bitwarden).
+dependencies:
+  "git+https://github.com/moicpl/collection-nixos.git": main
+  community.sops: ">=1.0.0"
+build_ignore:
+  - .gitignore
+  - CLAUDE.md

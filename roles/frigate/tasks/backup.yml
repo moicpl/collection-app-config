@@ -1,0 +1,46 @@
+---
+- name: backup.yml | Read the running config.yaml
+  ansible.builtin.slurp:
+    src: "{{ frigate_config_dir }}/config.yaml"
+  register: frigate_running_config
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ frigate_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# Rewritten only when the content changed
+- name: backup.yml | Save the running config.yaml in the store
+  community.sops.sops_encrypt:
+    path: "{{ frigate_store_dir }}/config.yaml.sops"
+    content_binary: "{{ frigate_running_config.content }}"
+    age:
+      - "{{ frigate_age_recipient }}"
+    age_key: "{{ frigate_age_key }}"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Frigate's UI, to
+# port to the inventory first
+- name: backup.yml | Compare the running config.yaml with the inventory
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ frigate_config_dir }}/config.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  check_mode: true
+  diff: true
+  register: frigate_drift
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      The running config.yaml differs from the inventory (diff above). Move the
+      changes to inventory/group_vars/nixos_home/frigate.yml: the next configure
+      run replaces them.
+  when: frigate_drift is changed

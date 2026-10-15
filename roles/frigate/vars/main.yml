@@ -1,0 +1,8 @@
+---
+# FRIGATE_* files in frigate_secrets_dir (the container's /run/secrets), which
+# Frigate substitutes for {FRIGATE_*} in config.yaml. Camera passwords are
+# URL-encoded: they go into stream URLs.
+frigate_secret_files: >-
+  {{ {'FRIGATE_RESTREAM_PASSWORD': frigate_restream_password}
+     | combine(dict(frigate_camera_passwords.keys() | map('upper') | map('regex_replace', '^', 'FRIGATE_')
+                    | zip(frigate_camera_passwords.values() | map('urlencode') | map('replace', '/', '%2F')))) }}

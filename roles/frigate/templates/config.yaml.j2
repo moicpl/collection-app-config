@@ -1,0 +1,50 @@
+{{ ansible_managed | comment }}
+# Built by the frigate role (configure) from the inventory: changes made in
+# Frigate's config editor are replaced by the next configure run (backup shows
+# them first). Passwords are {FRIGATE_*} placeholders, from /run/secrets.
+{% set restream = 'rtsp://' ~ frigate_restream_username ~ ':{FRIGATE_RESTREAM_PASSWORD}@127.0.0.1:8554/' %}
+{% set streams = {} %}
+{% set cameras = {} %}
+{% for camera in frigate_cameras %}
+{%   if camera.password_secret is defined %}
+{%     set credentials = camera.username ~ ':{FRIGATE_' ~ camera.password_secret | upper ~ '}' %}
+{%   else %}
+{%     set credentials = camera.username | default('') %}
+{%   endif %}
+{%   set record = camera.record_stream | default(camera.streams | list | first) %}
+{%   set detect = camera.detect_stream | default(camera.streams | list | last) %}
+{%   set names = {} %}
+{%   for key, url in camera.streams.items() %}
+{%     set _ = names.update({key: camera.name if key == record else camera.name ~ '_' ~ key}) %}
+{%     set _ = streams.update({names[key]: [url | replace('{credentials}', credentials)]}) %}
+{%   endfor %}
+{%   set inputs = [] %}
+{%   for key in [record, detect] | unique %}
+{%     set _ = inputs.append({
+         'path': restream ~ names[key],
+         'input_args': 'preset-rtsp-restream',
+         'roles': (['record'] if key == record else []) + (['detect'] if key == detect else []),
+       }) %}
+{%   endfor %}
+{%   set _ = cameras.update({camera.name: {
+       'ffmpeg': {'inputs': inputs},
+       'detect': {'enabled': true} | combine(camera.detect | default({})),
+     } | combine(camera.config | default({}), recursive=true)}) %}
+{% endfor %}
+{% set config = {
+     'mqtt': frigate_mqtt,
+     'auth': {'enabled': true},
+     'detectors': frigate_detectors,
+     'model': frigate_model,
+     'ffmpeg': frigate_ffmpeg,
+     'go2rtc': {
+       'rtsp': {'username': frigate_restream_username, 'password': '{FRIGATE_RESTREAM_PASSWORD}'},
+       'streams': streams,
+     },
+     'record': frigate_record,
+     'snapshots': frigate_snapshots,
+     'objects': frigate_objects,
+     'cameras': cameras,
+     'version': frigate_config_version,
+   } %}
+{{ config | combine(frigate_config_extra, recursive=true) | to_nice_yaml(indent=2, sort_keys=false) }}
