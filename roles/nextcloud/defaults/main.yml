@@ -69,7 +69,10 @@ nextcloud_db_name: nextcloud
 nextcloud_db_user: nextcloud
 nextcloud_html_dir: /var/lib/nextcloud/html     # /var/www/html: code, config, apps
 nextcloud_db_dir: /var/lib/nextcloud/postgres   # PostgreSQL's data
-nextcloud_data_dir: /data/nextcloud             # /var/www/html/data: users' files
+nextcloud_data_dir: /data/nextcloud             # users' files, on the host
+# The same in the container: outside the code (/var/www/html), which the
+# image's entrypoint chowns
+nextcloud_data_mount: /var/www/data
 # www-data in the image
 nextcloud_data_owner: "33"
 # Copies of the config and database taken on the host before default erases

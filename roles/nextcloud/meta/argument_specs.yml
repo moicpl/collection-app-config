@@ -56,6 +56,10 @@ argument_specs:
         elements: str
         default: []
         description: Apps disabled.
+      nextcloud_data_mount:
+        type: str
+        default: /var/www/data
+        description: The users' files in the container, outside the code.
       nextcloud_store_dir:
         type: str
         required: true

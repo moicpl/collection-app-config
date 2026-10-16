@@ -18,9 +18,6 @@
   ansible.builtin.include_tasks: install.yml
   when: not nextcloud_status.installed and not nextcloud_saved_db.stat.exists | default(false)
 
-- name: configure.yml | Set the admin user
-  ansible.builtin.include_tasks: admin.yml
-
 - name: configure.yml | Read the settings
   ansible.builtin.include_tasks: settings.yml
 
@@ -31,6 +28,11 @@
     stdin: "{{ nextcloud_config_changes | to_json }}"
   changed_when: true
   when: nextcloud_config_changes | length > 0
+
+# After the settings: its login check goes through a trusted domain, which a
+# new install doesn't have yet (it trusts localhost only)
+- name: configure.yml | Set the admin user
+  ansible.builtin.include_tasks: admin.yml
 
 # From the app store, which Nextcloud needs to reach
 - name: configure.yml | Install the missing apps

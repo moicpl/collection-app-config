@@ -39,9 +39,19 @@
   ansible.builtin.file:
     path: "{{ nextcloud_data_dir }}"
     state: directory
-    owner: "{{ nextcloud_data_owner }}"
-    group: "{{ nextcloud_data_owner }}"
     mode: "0770"
+
+# For www-data. An NFS export that maps all users to one refuses any chown,
+# and needs none: everyone writes as that user.
+- name: default.yml | Give the data directory to www-data
+  ansible.builtin.command:
+    argv:
+      - chown
+      - "{{ nextcloud_data_owner }}:{{ nextcloud_data_owner }}"
+      - "{{ nextcloud_data_dir }}"
+  register: nextcloud_data_chown
+  changed_when: nextcloud_data_chown.rc == 0
+  failed_when: nextcloud_data_chown.rc != 0 and 'Operation not permitted' not in nextcloud_data_chown.stderr
 
 # The images fill them at start: Nextcloud's code, PostgreSQL's database
 - name: default.yml | Recreate the config and database directories

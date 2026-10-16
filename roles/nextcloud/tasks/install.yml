@@ -12,6 +12,6 @@
            '--database-pass=' ~ nextcloud_db_password,
            '--admin-user=' ~ nextcloud_admin_username,
            '--admin-pass=' ~ nextcloud_admin_password,
-           '--data-dir=/var/www/html/data'] }}
+           '--data-dir=' ~ nextcloud_data_mount] }}
   changed_when: true
   no_log: true
