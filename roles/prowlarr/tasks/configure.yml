@@ -4,3 +4,6 @@
 
 - name: configure.yml | Set the login
   ansible.builtin.include_tasks: auth.yml
+
+- name: configure.yml | Set the apps Prowlarr syncs its indexers to
+  ansible.builtin.include_tasks: applications.yml

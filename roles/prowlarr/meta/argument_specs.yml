@@ -3,8 +3,8 @@ argument_specs:
   main:
     short_description: Manage the state of a Prowlarr container
     description:
-      - configure sets the login.
-      - backup saves the live login settings as YAML and shows their drift from the variables.
+      - configure sets the login and adds or updates the apps Prowlarr syncs its indexers to.
+      - backup saves the live login settings and apps as YAML and shows their drift from the variables.
       - default erases Prowlarr's state (needs prowlarr_wipe) and starts it empty with the login.
     options:
       prowlarr_action:
@@ -30,6 +30,20 @@ argument_specs:
         default: enabled
         choices: [enabled, disabledForLocalAddresses]
         description: Where the login is required.
+      prowlarr_applications:
+        type: list
+        elements: dict
+        default: []
+        description: Apps Prowlarr syncs its indexers to, by name (see defaults/main.yml).
+      prowlarr_application_sync_level:
+        type: str
+        default: fullSync
+        choices: [disabled, addOnly, fullSync]
+        description: Sync level of the apps that don't set sync_level.
+      prowlarr_application_prowlarr_url:
+        type: str
+        default: http://prowlarr:9696
+        description: How the apps reach Prowlarr (prowlarrUrl).
       prowlarr_store_dir:
         type: str
         required: true

@@ -1,0 +1,96 @@
+---
+# Apps Prowlarr syncs its indexers to (prowlarr_applications). Each app's API
+# key is read from its config.xml on the host, which it writes on its first
+# start: the app's container must have started once.
+- name: applications.yml | Read the apps' config.xml
+  ansible.builtin.slurp:
+    src: "{{ item.config_dir | default('/var/lib/' ~ item.implementation | lower) }}/config.xml"
+  loop: "{{ prowlarr_applications }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: prowlarr_application_config_xml
+
+- name: applications.yml | Use the apps' API keys
+  ansible.builtin.set_fact:
+    prowlarr_application_api_keys: >-
+      {{ dict(prowlarr_application_config_xml.results | map(attribute='item.name')
+              | zip(prowlarr_application_config_xml.results | map(attribute='content') | map('b64decode')
+                    | map('regex_findall', '<ApiKey>([A-Za-z0-9]+)</ApiKey>') | map('first'))) }}
+  no_log: true
+
+# The apps' fields hold their API keys
+- name: applications.yml | Read the apps and their templates
+  ansible.builtin.uri:
+    url: "{{ prowlarr_url }}/api/v1/{{ item }}"
+    headers: "{{ prowlarr_api_headers }}"
+  loop:
+    - applications
+    - applications/schema
+  register: prowlarr_application_lists
+  check_mode: false
+  no_log: true
+
+- name: applications.yml | Index the apps and their templates
+  ansible.builtin.set_fact:
+    prowlarr_applications_api: "{{ prowlarr_application_lists.results[0].json }}"
+    prowlarr_application_schema: "{{ prowlarr_application_lists.results[1].json }}"
+  no_log: true
+
+- name: applications.yml | Check the apps
+  ansible.builtin.assert:
+    that:
+      - item.implementation in prowlarr_application_schema | map(attribute='implementation')
+      - >-
+        item.fields | default({}) | list
+        | difference(prowlarr_application_schema | selectattr('implementation', 'equalto', item.implementation)
+                     | map(attribute='fields') | flatten | map(attribute='name'))
+        | length == 0
+    fail_msg: >-
+      App {{ item.name }}: unknown implementation or field. Prowlarr has
+      {{ prowlarr_application_schema | map(attribute='implementation') | join(', ') }};
+      fields of {{ item.implementation }}:
+      {{ prowlarr_application_schema | selectattr('implementation', 'equalto', item.implementation)
+         | map(attribute='fields') | flatten | map(attribute='name') | join(', ') }}.
+    quiet: true
+  loop: "{{ prowlarr_applications }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Prowlarr tests the connection to the app before it saves. The fields not
+# listed go back to their defaults, except the passwords, kept as they are.
+# Also when the app's API key changed (e.g. after its default action); a key
+# the API masks can't be compared.
+- name: applications.yml | Add or update the apps that differ
+  ansible.builtin.uri:
+    url: "{{ prowlarr_url }}/api/v1/applications{{ ('/' ~ live.id) if live else '' }}"
+    method: "{{ 'PUT' if live else 'POST' }}"
+    headers: "{{ prowlarr_api_headers }}"
+    body_format: json
+    body: "{{ base | combine({'name': item.name, 'syncLevel': item.sync_level, 'fields': fields_json | from_json}) }}"
+    status_code: [200, 201, 202]
+  changed_when: true
+  loop: "{{ prowlarr_applications_desired }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    live: "{{ prowlarr_applications_api | selectattr('name', 'equalto', item.name) | first | default({}) }}"
+    base: "{{ live or (prowlarr_application_schema | selectattr('implementation', 'equalto', item.implementation) | first) }}"
+    api_key: "{{ prowlarr_application_api_keys[item.name] }}"
+    live_api_key: "{{ live.fields | default([]) | selectattr('name', 'equalto', 'apiKey') | map(attribute='value') | first | default('') }}"
+    fields_json: >-
+      [{% for field in base.fields %}
+      {{ field | combine({'value': api_key if field.name == 'apiKey'
+                                   else item.fields[field.name] if field.name in item.fields
+                                   else field.value | default(none) if field.type == 'password' else none}) | to_json }}{{ '' if loop.last else ',' }}
+      {% endfor %}]
+  when: >-
+    prowlarr_applications_state | selectattr('name', 'equalto', item.name) | list != [item]
+    or live_api_key not in [api_key, '********']
+  no_log: true
+
+- name: applications.yml | Report the apps not in the inventory
+  ansible.builtin.debug:
+    msg: >-
+      In Prowlarr but not in the inventory, left alone:
+      {{ prowlarr_applications_api | map(attribute='name') | difference(prowlarr_applications | map(attribute='name')) | join(', ') }}
+  when: prowlarr_applications_api | map(attribute='name') | difference(prowlarr_applications | map(attribute='name')) | length > 0

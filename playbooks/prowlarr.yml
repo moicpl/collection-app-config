@@ -1,11 +1,11 @@
 ---
-# Prowlarr's state on the [nixos_arr] machines, as code: the login comes from
-# inventory/group_vars/nixos_arr/prowlarr.yml. Run from nixos_playbooks/, after
+# Prowlarr's state on the [nixos_arr] machines, as code: the login and the apps
+# it syncs its indexers to come from inventory/group_vars/nixos_arr/prowlarr.yml. Run from nixos_playbooks/, after
 # arr_nix.yml:
 #   ansible-playbook config/prowlarr.yml -e app_action=<action>
 #
-#   configure  set the login
-#   backup     save the live login settings in the app state store (appstate/,
+#   configure  set the login, add or update the apps (Sonarr, Radarr, Lidarr)
+#   backup     save the live login and apps in the app state store (appstate/,
 #              prowlarr.yml, same format as the inventory) and show their
 #              differences from the inventory, i.e. changes made in Prowlarr's UI
 #   default    erase Prowlarr's config and database and start it empty, with the

@@ -24,7 +24,7 @@ Each takes `app_action`:
 | --- | --- | --- |
 | `moicpl.app_config.frigate` | `nixos_home` | `moicpl.app_config.frigate`: config.yaml, camera and admin passwords |
 | `moicpl.app_config.sonarr` | `nixos_arr` | `moicpl.app_config.sonarr`: login, root folders, series, download clients |
-| `moicpl.app_config.prowlarr` | `nixos_arr` | `moicpl.app_config.prowlarr`: login |
+| `moicpl.app_config.prowlarr` | `nixos_arr` | `moicpl.app_config.prowlarr`: login, apps (Sonarr, Radarr, Lidarr) |
 
 ## Requirements
 

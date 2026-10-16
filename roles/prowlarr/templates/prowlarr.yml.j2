@@ -1,5 +1,6 @@
 ---
 # Prowlarr on {{ inventory_hostname }}, saved by the prowlarr role (backup), in
 # the format of its variables (inventory/group_vars/<group>/prowlarr.yml).
-# The password is in Bitwarden (prowlarr_admin_password).
+# The password is in Bitwarden (prowlarr_admin_password); the apps' API keys
+# are read from their config.xml.
 {{ prowlarr_state | to_nice_yaml(indent=2, sort_keys=false) }}

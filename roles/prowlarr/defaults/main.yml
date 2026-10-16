@@ -1,7 +1,8 @@
 ---
 # What the run does (meta/argument_specs.yml), passed by the playbook:
-#   configure  set the login
-#   backup     save the live login settings in prowlarr_store_dir
+#   configure  set the login, add or update the apps (Sonarr, Radarr...)
+#              Prowlarr syncs its indexers to
+#   backup     save the live settings in prowlarr_store_dir
 #              (prowlarr.yml, in the format of the variables below) and show
 #              how they differ from the variables (changes made in Prowlarr's UI)
 #   default    erase Prowlarr's config and database, start it empty with the
@@ -16,6 +17,25 @@ prowlarr_admin_username: admin
 # Secret, read by the playbook from Bitwarden
 prowlarr_admin_password: ""
 prowlarr_authentication_required: enabled
+
+# Apps Prowlarr syncs its indexers to (Settings > Apps), by name: added when
+# missing, kept in line. fields: the app's settings, by their API name
+# (configure lists them on a typo); the others keep Prowlarr's defaults.
+# apiKey isn't set here: it is read from <config_dir>/config.xml on the host.
+# Apps in Prowlarr that aren't listed are left alone.
+#   - name: Sonarr
+#     implementation: Sonarr               # Sonarr, Radarr, Lidarr, Readarr...
+#     sync_level: fullSync                 # default: prowlarr_application_sync_level
+#     config_dir: /var/lib/sonarr          # default: /var/lib/<implementation, lowercase>
+#     fields:
+#       baseUrl: http://sonarr:8989        # how Prowlarr reaches the app
+#       syncCategories: [5000, 5030, 5040] # default: Prowlarr's for the app
+prowlarr_applications: []
+# disabled, addOnly (indexers added, never updated or removed) or fullSync
+# (indexers added, updated and removed in the app as in Prowlarr)
+prowlarr_application_sync_level: fullSync
+# How the apps reach Prowlarr (prowlarrUrl): its container on the arr network
+prowlarr_application_prowlarr_url: "http://{{ prowlarr_container }}:{{ prowlarr_port }}"
 
 # App state store on the controller: this host's prowlarr directory
 prowlarr_store_dir: ""

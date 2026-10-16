@@ -2,12 +2,24 @@
 - name: backup.yml | Connect to Prowlarr's API
   ansible.builtin.include_tasks: api.yml
 
-- name: backup.yml | Read the security settings
+- name: backup.yml | Read the live settings
   ansible.builtin.uri:
-    url: "{{ prowlarr_url }}/api/v1/config/host"
+    url: "{{ prowlarr_url }}/api/v1/{{ item }}"
     headers: "{{ prowlarr_api_headers }}"
-  register: prowlarr_host_config
+  loop:
+    - config/host
+    - applications
+    - applications/schema
+  register: prowlarr_lists
   check_mode: false
+  no_log: true
+
+- name: backup.yml | Index the live settings
+  ansible.builtin.set_fact:
+    prowlarr_host_config: "{{ prowlarr_lists.results[0].json }}"
+    prowlarr_applications_api: "{{ prowlarr_lists.results[1].json }}"
+    prowlarr_application_schema: "{{ prowlarr_lists.results[2].json }}"
+  no_log: true
 
 - name: backup.yml | Create the store directory
   ansible.builtin.file:
@@ -18,7 +30,7 @@
   become: false
 
 # Same format as the variables, so the file can be compared with them, or
-# copied into the inventory. Plain text: no secrets in it.
+# copied into the inventory. Plain text: no secrets in it (no API keys).
 - name: backup.yml | Save the live settings in the store
   ansible.builtin.template:
     src: prowlarr.yml.j2
@@ -26,8 +38,9 @@
     mode: "0644"
   vars:
     prowlarr_state:
-      prowlarr_admin_username: "{{ prowlarr_host_config.json.username }}"
-      prowlarr_authentication_required: "{{ prowlarr_host_config.json.authenticationRequired }}"
+      prowlarr_admin_username: "{{ prowlarr_host_config.username }}"
+      prowlarr_authentication_required: "{{ prowlarr_host_config.authenticationRequired }}"
+      prowlarr_applications: "{{ prowlarr_applications_state }}"
   delegate_to: localhost
   become: false
 
@@ -42,6 +55,7 @@
     prowlarr_state:
       prowlarr_admin_username: "{{ prowlarr_admin_username }}"
       prowlarr_authentication_required: "{{ prowlarr_authentication_required }}"
+      prowlarr_applications: "{{ prowlarr_applications_desired }}"
   check_mode: true
   diff: true
   register: prowlarr_drift
@@ -53,5 +67,5 @@
     msg: >-
       Prowlarr's settings differ from the inventory (diff above: - live, + inventory).
       Move the changes to inventory/group_vars/nixos_arr/prowlarr.yml: the next
-      configure run reverts them.
+      configure run reverts the login and the listed apps, and adds the missing apps.
   when: prowlarr_drift is changed

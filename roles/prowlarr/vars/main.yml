@@ -1,3 +1,35 @@
 ---
 prowlarr_api_headers:
   X-Api-Key: "{{ prowlarr_api_key }}"
+
+# Apps as {name, implementation, sync_level, fields}: fields complete
+# (Prowlarr's defaults for those not given, prowlarrUrl from
+# prowlarr_application_prowlarr_url), without the empty ones, the API key (read
+# from the app's config.xml) and the passwords (masked by the API). The listed
+# ones, and the live ones; they need prowlarr_application_schema and
+# prowlarr_applications_api (the API's lists of templates and of apps). Built
+# as JSON: a template made of several parts gives a string.
+prowlarr_applications_desired: "{{ prowlarr_applications_desired_json | from_json }}"
+prowlarr_applications_desired_json: >-
+  [{% for app in prowlarr_applications | sort(attribute='name') %}
+  {% set schema = (prowlarr_application_schema | selectattr('implementation', 'equalto', app.implementation) | first).fields
+                  | rejectattr('type', 'equalto', 'password') | rejectattr('name', 'equalto', 'apiKey')
+                  | selectattr('value', 'defined') | list %}
+  {{ {'name': app.name,
+      'implementation': app.implementation,
+      'sync_level': app.sync_level | default(prowlarr_application_sync_level),
+      'fields': dict(schema | map(attribute='name') | zip(schema | map(attribute='value')))
+                | combine({'prowlarrUrl': prowlarr_application_prowlarr_url}, app.fields | default({}))
+                | dict2items | rejectattr('value', 'none') | items2dict} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]
+prowlarr_applications_state: "{{ prowlarr_applications_state_json | from_json }}"
+prowlarr_applications_state_json: >-
+  [{% for app in prowlarr_applications_api | sort(attribute='name') %}
+  {% set fields = app.fields | rejectattr('type', 'equalto', 'password') | rejectattr('name', 'equalto', 'apiKey')
+                  | selectattr('value', 'defined') | list %}
+  {{ {'name': app.name,
+      'implementation': app.implementation,
+      'sync_level': app.syncLevel,
+      'fields': dict(fields | map(attribute='name') | zip(fields | map(attribute='value')))
+                | dict2items | rejectattr('value', 'none') | items2dict} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]
