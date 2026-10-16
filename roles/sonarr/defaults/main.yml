@@ -44,18 +44,24 @@ sonarr_series: []
 
 # Download clients, by name: added when missing, kept in line. fields: the
 # client's settings, by their API name (configure lists them on a typo); the
-# others keep Sonarr's defaults. Secret fields (passwords) aren't set: they
-# would need Bitwarden. Clients in Sonarr that aren't listed are left alone.
+# others keep Sonarr's defaults. password_secret: the Bitwarden secret of the
+# client's password (the playbook reads it, into sonarr_download_client_passwords);
+# a client with one is tested at each run and updated when the test fails.
+# Clients in Sonarr that aren't listed are left alone.
 #   - name: Transmission
 #     implementation: Transmission         # Transmission, QBittorrent, Sabnzbd...
 #     enable: true
 #     priority: 1
+#     password_secret: transmission_rpc_password
 #     fields:
 #       host: transmission
+#       username: transmission
 #       port: 9091
 #       urlBase: /transmission/
 #       tvCategory: tv-sonarr
 sonarr_download_clients: []
+# Secret, read by the playbook from Bitwarden: password_secret -> password
+sonarr_download_client_passwords: {}
 
 # App state store on the controller: this host's sonarr directory
 sonarr_store_dir: ""

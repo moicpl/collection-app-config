@@ -61,6 +61,11 @@ argument_specs:
         elements: dict
         default: []
         description: Download clients, by name (see defaults/main.yml).
+      lidarr_download_client_passwords:
+        type: dict
+        default: {}
+        no_log: true
+        description: Passwords of the download clients, by their password_secret.
       lidarr_store_dir:
         type: str
         required: true

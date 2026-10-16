@@ -13,8 +13,8 @@
 #   default    erase Transmission's state (settings, torrent list), not the
 #              downloads, and start it again; needs -e app_wipe=true
 #
-# No login (the *arr apps reach it on the arr network), so no secret but the
-# SSH key.
+# Secrets in Bitwarden: transmission_rpc_password, the web UI and RPC login,
+# created by arr_nix.yml (which sets it in the container).
 
 - name: Manage Transmission's state
   hosts: nixos_arr
@@ -42,6 +42,7 @@
         bitwarden_secret_name: "{{ item }}"
       loop:
         - "{{ ssh_key_name }}_private_key"
+        - transmission_rpc_password
       tags: always
 
     - name: transmission.yml | Connect to the host
@@ -60,3 +61,4 @@
         transmission_action: "{{ app_action }}"
         transmission_wipe: "{{ app_wipe | default(false) | bool }}"
         transmission_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/transmission"
+        transmission_rpc_password: "{{ bitwarden_secrets.transmission_rpc_password }}"

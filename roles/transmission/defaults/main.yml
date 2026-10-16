@@ -10,6 +10,12 @@ transmission_action: ""
 # default erases data: the run stops unless this is true
 transmission_wipe: false
 
+# Web UI and RPC login. Set by arr_nix.yml in the container's environment
+# (the image applies it at each start): this role logs in with it.
+transmission_rpc_username: transmission
+# Secret, read by the playbook from Bitwarden (created by arr_nix.yml)
+transmission_rpc_password: ""
+
 # Session settings, by their RPC name
 # (https://github.com/transmission/transmission/blob/main/docs/rpc-spec.md,
 # session-set): set when they differ, others left alone. Speeds in kB/s.
@@ -17,7 +23,7 @@ transmission_wipe: false
 #   speed-limit-down-enabled: true
 #   seedRatioLimit: 10
 #   seedRatioLimited: true
-# The paths and the RPC whitelist are set by arr_nix.yml (container
+# The paths, the RPC whitelist and the login are set by arr_nix.yml (container
 # environment, which overrides settings.json at each start): don't set them here.
 transmission_settings: {}
 

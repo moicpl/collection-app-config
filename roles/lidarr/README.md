@@ -12,9 +12,10 @@ login password from Bitwarden and passes it in.
 | `default` | With `lidarr_wipe: true`: stops Lidarr, keeps a snapshot on the host (`lidarr_snapshot_dir`), erases its config and database (not the media), and starts it empty with the login only. |
 
 Artists, root folders and download clients are only added or updated: those
-in Lidarr but not in the variables are left alone, and reported. Download
-client passwords aren't set. Not managed yet: indexers (Prowlarr pushes them),
-quality profiles and the other settings.
+in Lidarr but not in the variables are left alone, and reported. A download
+client's password comes from Bitwarden (its `password_secret`); such a client
+is tested at each run and updated when the test fails. Not managed yet:
+indexers (Prowlarr pushes them), quality profiles and the other settings.
 
 The API key is read from Lidarr's `config.xml` on the host; the API calls are
 made from the host to `lidarr_url`.

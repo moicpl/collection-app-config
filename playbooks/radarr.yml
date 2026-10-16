@@ -52,9 +52,12 @@
       vars:
         bitwarden_action: get
         bitwarden_secret_name: "{{ item }}"
-      loop:
-        - "{{ ssh_key_name }}_private_key"
-        - radarr_admin_password
+        # The download clients' passwords (password_secret in the inventory)
+        radarr_client_secrets: >-
+          {{ radarr_download_clients | default([]) | selectattr('password_secret', 'defined')
+             | map(attribute='password_secret') | unique }}
+      loop: >-
+        {{ [ssh_key_name ~ '_private_key', 'radarr_admin_password'] + radarr_client_secrets }}
       tags: always
 
     - name: radarr.yml | Connect to the host
@@ -73,4 +76,8 @@
         radarr_action: "{{ app_action }}"
         radarr_wipe: "{{ app_wipe | default(false) | bool }}"
         radarr_admin_password: "{{ bitwarden_secrets.radarr_admin_password }}"
+        radarr_download_client_passwords: >-
+          {{ bitwarden_secrets | dict2items
+             | selectattr('key', 'in', radarr_download_clients | default([]) | map(attribute='password_secret', default='') | list)
+             | items2dict }}
         radarr_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/radarr"

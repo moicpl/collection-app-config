@@ -142,8 +142,27 @@
   loop_control:
     label: "{{ item.name }}"
 
+# A client with a password_secret is tested: the API masks passwords, so a
+# password changed in Bitwarden shows only as a failing connection
+- name: configure.yml | Test the download clients that have a password
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/downloadclient/test"
+    method: POST
+    headers: "{{ radarr_api_headers }}"
+    body_format: json
+    body: "{{ radarr_download_clients_api | selectattr('name', 'equalto', item.name) | first }}"
+    status_code: [200, 400]
+  loop: >-
+    {{ radarr_download_clients | selectattr('password_secret', 'defined')
+       | selectattr('name', 'in', radarr_download_clients_api | map(attribute='name') | list) }}
+  loop_control:
+    label: "{{ item.name }}"
+  register: radarr_download_client_tests
+  check_mode: false
+
 # Radarr tests the connection before it saves. The fields not listed go back
-# to their defaults, except the passwords, kept as they are.
+# to their defaults; a password field gets the client's password_secret, or
+# else keeps its value.
 - name: configure.yml | Add or update the download clients that differ
   ansible.builtin.uri:
     url: "{{ radarr_url }}/api/v3/downloadclient{{ ('/' ~ live.id) if live else '' }}"
@@ -161,12 +180,18 @@
   vars:
     live: "{{ radarr_download_clients_api | selectattr('name', 'equalto', item.name) | first | default({}) }}"
     base: "{{ live or (radarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation) | first) }}"
+    source: "{{ radarr_download_clients | selectattr('name', 'equalto', item.name) | first }}"
+    client_password: "{{ radarr_download_client_passwords[source.password_secret] if source.password_secret is defined else '' }}"
     fields_json: >-
       [{% for field in base.fields %}
       {{ field | combine({'value': item.fields[field.name] if field.name in item.fields
-                                   else field.value | default(none) if field.type == 'password' else none}) | to_json }}{{ '' if loop.last else ',' }}
+                                   else (client_password if client_password | length > 0 else field.value | default(none))
+                                        if field.type == 'password' else none}) | to_json }}{{ '' if loop.last else ',' }}
       {% endfor %}]
-  when: radarr_download_clients_state | selectattr('name', 'equalto', item.name) | list != [item]
+  when: >-
+    radarr_download_clients_state | selectattr('name', 'equalto', item.name) | list != [item]
+    or item.name in radarr_download_client_tests.results | selectattr('status', 'equalto', 400) | map(attribute='item.name') | list
+  no_log: true
 
 - name: configure.yml | Report the movies not in the inventory
   ansible.builtin.debug:

@@ -17,6 +17,9 @@
     url: "{{ transmission_rpc_url }}"
     method: POST
     headers: "{{ transmission_rpc_headers }}"
+    url_username: "{{ transmission_rpc_username }}"
+    url_password: "{{ transmission_rpc_password }}"
+    force_basic_auth: true
     body_format: json
     body:
       method: session-set

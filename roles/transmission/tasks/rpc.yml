@@ -1,16 +1,30 @@
 ---
 # Transmission starts once the VPN is up. Its RPC first answers 409 with the
-# session ID that the next requests send back (CSRF protection).
+# session ID that the next requests send back (CSRF protection), or 401 when
+# the login is wrong.
 - name: rpc.yml | Wait for Transmission
   ansible.builtin.uri:
     url: "{{ transmission_rpc_url }}"
     method: POST
-    status_code: 409
+    url_username: "{{ transmission_rpc_username }}"
+    url_password: "{{ transmission_rpc_password }}"
+    force_basic_auth: true
+    status_code: [409, 401]
   register: transmission_handshake
-  until: transmission_handshake.status == 409
+  until: transmission_handshake.status in [409, 401]
   retries: 60
   delay: 5
   check_mode: false
+
+- name: rpc.yml | Check the login
+  ansible.builtin.assert:
+    that:
+      - transmission_handshake.status == 409
+    fail_msg: >-
+      Transmission on {{ inventory_hostname }} refuses {{ transmission_rpc_username }} with
+      transmission_rpc_password from Bitwarden. The login comes from the container's
+      environment: run arr_nix.yml.
+    quiet: true
 
 - name: rpc.yml | Use the RPC session ID
   ansible.builtin.set_fact:
@@ -22,6 +36,9 @@
     url: "{{ transmission_rpc_url }}"
     method: POST
     headers: "{{ transmission_rpc_headers }}"
+    url_username: "{{ transmission_rpc_username }}"
+    url_password: "{{ transmission_rpc_password }}"
+    force_basic_auth: true
     body_format: json
     body:
       method: session-get

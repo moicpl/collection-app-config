@@ -28,7 +28,7 @@ Each takes `app_action`:
 | `moicpl.app_config.radarr` | `nixos_arr` | `moicpl.app_config.radarr`: login, root folders, movies, download clients |
 | `moicpl.app_config.lidarr` | `nixos_arr` | `moicpl.app_config.lidarr`: login, root folders, artists, download clients |
 | `moicpl.app_config.prowlarr` | `nixos_arr` | `moicpl.app_config.prowlarr`: login, apps (Sonarr, Radarr, Lidarr) |
-| `moicpl.app_config.transmission` | `nixos_arr` | `moicpl.app_config.transmission`: session settings (no login) |
+| `moicpl.app_config.transmission` | `nixos_arr` | `moicpl.app_config.transmission`: session settings (logs in with the login arr_nix.yml sets) |
 | `moicpl.app_config.jellyfin` | `nixos_arr` | `moicpl.app_config.jellyfin`: admin user, libraries, server and transcoding settings |
 | `moicpl.app_config.immich` | `nixos_arr` | `moicpl.app_config.immich`: admin user, settings (as changes from the defaults) |
 | `moicpl.app_config.nextcloud` | `nixos_arr` | `moicpl.app_config.nextcloud`: install, admin user, settings, apps; database and config.php saved encrypted, restored on a new install |

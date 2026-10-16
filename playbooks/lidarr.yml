@@ -52,9 +52,12 @@
       vars:
         bitwarden_action: get
         bitwarden_secret_name: "{{ item }}"
-      loop:
-        - "{{ ssh_key_name }}_private_key"
-        - lidarr_admin_password
+        # The download clients' passwords (password_secret in the inventory)
+        lidarr_client_secrets: >-
+          {{ lidarr_download_clients | default([]) | selectattr('password_secret', 'defined')
+             | map(attribute='password_secret') | unique }}
+      loop: >-
+        {{ [ssh_key_name ~ '_private_key', 'lidarr_admin_password'] + lidarr_client_secrets }}
       tags: always
 
     - name: lidarr.yml | Connect to the host
@@ -73,4 +76,8 @@
         lidarr_action: "{{ app_action }}"
         lidarr_wipe: "{{ app_wipe | default(false) | bool }}"
         lidarr_admin_password: "{{ bitwarden_secrets.lidarr_admin_password }}"
+        lidarr_download_client_passwords: >-
+          {{ bitwarden_secrets | dict2items
+             | selectattr('key', 'in', lidarr_download_clients | default([]) | map(attribute='password_secret', default='') | list)
+             | items2dict }}
         lidarr_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/lidarr"

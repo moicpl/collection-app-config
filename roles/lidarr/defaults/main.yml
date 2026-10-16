@@ -49,18 +49,24 @@ lidarr_artists: []
 
 # Download clients, by name: added when missing, kept in line. fields: the
 # client's settings, by their API name (configure lists them on a typo); the
-# others keep Lidarr's defaults. Secret fields (passwords) aren't set: they
-# would need Bitwarden. Clients in Lidarr that aren't listed are left alone.
+# others keep Lidarr's defaults. password_secret: the Bitwarden secret of the
+# client's password (the playbook reads it, into lidarr_download_client_passwords);
+# a client with one is tested at each run and updated when the test fails.
+# Clients in Lidarr that aren't listed are left alone.
 #   - name: Transmission
 #     implementation: Transmission         # Transmission, QBittorrent, Sabnzbd...
 #     enable: true
 #     priority: 1
+#     password_secret: transmission_rpc_password
 #     fields:
 #       host: transmission
+#       username: transmission
 #       port: 9091
 #       urlBase: /transmission/
 #       musicCategory: lidarr
 lidarr_download_clients: []
+# Secret, read by the playbook from Bitwarden: password_secret -> password
+lidarr_download_client_passwords: {}
 
 # App state store on the controller: this host's lidarr directory
 lidarr_store_dir: ""

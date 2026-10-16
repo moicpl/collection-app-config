@@ -16,6 +16,15 @@ argument_specs:
         type: bool
         default: false
         description: Allow default to erase the state.
+      transmission_rpc_username:
+        type: str
+        default: transmission
+        description: Web UI and RPC user, set by arr_nix.yml.
+      transmission_rpc_password:
+        type: str
+        required: true
+        no_log: true
+        description: Its password, set by arr_nix.yml.
       transmission_settings:
         type: dict
         default: {}
