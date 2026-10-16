@@ -1,0 +1,184 @@
+---
+- name: configure.yml | Connect to Radarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: configure.yml | Set the login
+  ansible.builtin.include_tasks: auth.yml
+
+- name: configure.yml | Read the root folders
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/rootfolder"
+    headers: "{{ radarr_api_headers }}"
+  register: radarr_root_folders_live
+  check_mode: false
+
+# Radarr checks that the folder exists in the container
+- name: configure.yml | Add the missing root folders
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/rootfolder"
+    method: POST
+    headers: "{{ radarr_api_headers }}"
+    body_format: json
+    body:
+      path: "{{ item }}"
+    status_code: 201
+  changed_when: true
+  loop: "{{ radarr_root_folders | difference(radarr_root_folders_live.json | map(attribute='path')) }}"
+
+- name: configure.yml | Read the quality profiles and movies
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/{{ item }}"
+    headers: "{{ radarr_api_headers }}"
+  loop:
+    - qualityprofile
+    - movie
+  register: radarr_lists
+  check_mode: false
+
+- name: configure.yml | Index the quality profiles and movies
+  ansible.builtin.set_fact:
+    radarr_profile_ids: "{{ dict(radarr_lists.results[0].json | map(attribute='name') | zip(radarr_lists.results[0].json | map(attribute='id'))) }}"
+    radarr_movies_live: "{{ dict(radarr_lists.results[1].json | map(attribute='tmdbId') | zip(radarr_lists.results[1].json)) }}"
+
+- name: configure.yml | Check the quality profiles
+  ansible.builtin.assert:
+    that:
+      - radarr_movies_desired | map(attribute='quality_profile') | difference(radarr_profile_ids.keys()) | length == 0
+    fail_msg: >-
+      Unknown quality profile:
+      {{ radarr_movies_desired | map(attribute='quality_profile') | difference(radarr_profile_ids.keys()) | join(', ') }}
+      (Radarr has {{ radarr_profile_ids.keys() | join(', ') }}).
+    quiet: true
+
+# Radarr adds a movie from its lookup result (TMDB metadata)
+- name: configure.yml | Look up the movies to add
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/movie/lookup/tmdb?tmdbId={{ item.tmdb_id }}"
+    headers: "{{ radarr_api_headers }}"
+  loop: "{{ radarr_movies_desired | rejectattr('tmdb_id', 'in', radarr_movies_live.keys()) }}"
+  loop_control:
+    label: "{{ item.tmdb_id }} {{ item.title }}"
+  register: radarr_lookups
+  failed_when: radarr_lookups.json.tmdbId | default(0) != item.tmdb_id
+  check_mode: false
+
+- name: configure.yml | Add the missing movies
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/movie"
+    method: POST
+    headers: "{{ radarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ item.json | combine({
+           'qualityProfileId': radarr_profile_ids[item.item.quality_profile],
+           'rootFolderPath': item.item.root_folder,
+           'monitored': item.item.monitored,
+           'minimumAvailability': item.item.minimum_availability,
+           'addOptions': {
+             'monitor': 'movieOnly' if item.item.monitored else 'none',
+             'searchForMovie': movie.search | default(radarr_movie_search) | bool}}) }}
+    status_code: 201
+  changed_when: true
+  loop: "{{ radarr_lookups.results }}"
+  loop_control:
+    label: "{{ item.json.title }} ({{ item.json.year }})"
+  vars:
+    movie: "{{ radarr_movies | selectattr('tmdb_id', 'equalto', item.item.tmdb_id) | first }}"
+
+- name: configure.yml | Update the listed movies that differ
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/movie/{{ live.id }}"
+    method: PUT
+    headers: "{{ radarr_api_headers }}"
+    body_format: json
+    body: "{{ live | combine(wanted) }}"
+    status_code: [200, 202]
+  changed_when: true
+  loop: "{{ radarr_movies_desired | selectattr('tmdb_id', 'in', radarr_movies_live.keys()) }}"
+  loop_control:
+    label: "{{ item.tmdb_id }} {{ live.title }}"
+  vars:
+    live: "{{ radarr_movies_live[item.tmdb_id] }}"
+    wanted:
+      qualityProfileId: "{{ radarr_profile_ids[item.quality_profile] }}"
+      monitored: "{{ item.monitored }}"
+      minimumAvailability: "{{ item.minimum_availability }}"
+  when: >-
+    live.qualityProfileId != wanted.qualityProfileId or live.monitored != wanted.monitored
+    or live.minimumAvailability != wanted.minimumAvailability
+
+- name: configure.yml | Read the download clients and their templates
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/{{ item }}"
+    headers: "{{ radarr_api_headers }}"
+  loop:
+    - downloadclient
+    - downloadclient/schema
+  register: radarr_download_client_lists
+  check_mode: false
+
+- name: configure.yml | Index the download clients and their templates
+  ansible.builtin.set_fact:
+    radarr_download_clients_api: "{{ radarr_download_client_lists.results[0].json }}"
+    radarr_download_client_schema: "{{ radarr_download_client_lists.results[1].json }}"
+
+- name: configure.yml | Check the download clients
+  ansible.builtin.assert:
+    that:
+      - item.implementation in radarr_download_client_schema | map(attribute='implementation')
+      - >-
+        item.fields | default({}) | list
+        | difference(radarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation)
+                     | map(attribute='fields') | flatten | map(attribute='name'))
+        | length == 0
+    fail_msg: >-
+      Download client {{ item.name }}: unknown implementation or field. Radarr has
+      {{ radarr_download_client_schema | map(attribute='implementation') | join(', ') }};
+      fields of {{ item.implementation }}:
+      {{ radarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation)
+         | map(attribute='fields') | flatten | map(attribute='name') | join(', ') }}.
+    quiet: true
+  loop: "{{ radarr_download_clients }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Radarr tests the connection before it saves. The fields not listed go back
+# to their defaults, except the passwords, kept as they are.
+- name: configure.yml | Add or update the download clients that differ
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/downloadclient{{ ('/' ~ live.id) if live else '' }}"
+    method: "{{ 'PUT' if live else 'POST' }}"
+    headers: "{{ radarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ base | combine({'name': item.name, 'enable': item.enable, 'priority': item.priority,
+                         'fields': fields_json | from_json}) }}
+    status_code: [200, 201, 202]
+  changed_when: true
+  loop: "{{ radarr_download_clients_desired }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    live: "{{ radarr_download_clients_api | selectattr('name', 'equalto', item.name) | first | default({}) }}"
+    base: "{{ live or (radarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation) | first) }}"
+    fields_json: >-
+      [{% for field in base.fields %}
+      {{ field | combine({'value': item.fields[field.name] if field.name in item.fields
+                                   else field.value | default(none) if field.type == 'password' else none}) | to_json }}{{ '' if loop.last else ',' }}
+      {% endfor %}]
+  when: radarr_download_clients_state | selectattr('name', 'equalto', item.name) | list != [item]
+
+- name: configure.yml | Report the movies not in the inventory
+  ansible.builtin.debug:
+    msg: >-
+      In Radarr but not in the inventory, left alone:
+      {{ radarr_movies_live.values() | rejectattr('tmdbId', 'in', radarr_movies_desired | map(attribute='tmdb_id'))
+         | map(attribute='title') | join(', ') }}
+  when: radarr_movies_live.keys() | difference(radarr_movies_desired | map(attribute='tmdb_id')) | length > 0
+
+- name: configure.yml | Report the download clients not in the inventory
+  ansible.builtin.debug:
+    msg: >-
+      In Radarr but not in the inventory, left alone:
+      {{ radarr_download_clients_api | map(attribute='name') | difference(radarr_download_clients | map(attribute='name')) | join(', ') }}
+  when: radarr_download_clients_api | map(attribute='name') | difference(radarr_download_clients | map(attribute='name')) | length > 0

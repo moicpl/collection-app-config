@@ -1,0 +1,7 @@
+---
+immich_api_headers:
+  Authorization: "Bearer {{ immich_token }}"
+
+# The whole settings wanted: Immich's defaults (immich_config_defaults) with
+# immich_system_config merged in
+immich_config_desired: "{{ immich_config_defaults | combine(immich_system_config, recursive=true) }}"

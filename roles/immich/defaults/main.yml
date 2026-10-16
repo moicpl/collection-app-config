@@ -1,0 +1,49 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  create the admin user on the first start, set the settings
+#   backup     save the live settings in immich_store_dir (immich.yml, in the
+#              format of the variables below) and show how they differ from
+#              the variables (changes made in Immich's UI)
+#   default    erase Immich's database (users, albums, photo metadata), not
+#              the photo files, start it empty with the admin user only
+immich_action: ""
+# default erases data: the run stops unless this is true
+immich_wipe: false
+
+# Admin user, created on the first start. Immich logs in by email. It changes
+# a password only given the current one: configure stops when this one doesn't
+# log in.
+immich_admin_email: admin@example.com
+immich_admin_name: Admin
+# Secret, read by the playbook from Bitwarden
+immich_admin_password: ""
+
+# Settings (Administration > Settings), as the parts that differ from Immich's
+# defaults, in the format of its API (GET /api/system-config/defaults lists
+# them all). configure sets the defaults with these merged in: settings changed
+# in the UI and not listed here go back to their defaults.
+#   immich_system_config:
+#     ffmpeg:
+#       accel: vaapi
+#     storageTemplate:                     # !unsafe: {{ }} is Immich's, not Jinja
+#       enabled: true
+#       template: !unsafe "{{y}}/{{MM}}/{{filename}}"
+immich_system_config: {}
+
+# App state store on the controller: this host's immich directory
+immich_store_dir: ""
+
+# Containers and host paths, as set up by arr_nix.yml
+immich_container: immich-server
+immich_containers:
+  - immich-server
+  - immich-machine-learning
+  - immich-postgres
+  - immich-redis
+immich_port: 2283
+immich_url: "http://127.0.0.1:{{ immich_port }}"
+immich_db_dir: /var/lib/immich/postgres         # PostgreSQL's data
+# Copies of the database taken on the host before default erases it; the last
+# immich_snapshot_keep are kept
+immich_snapshot_dir: /var/lib/appstate/immich/snapshots
+immich_snapshot_keep: 3

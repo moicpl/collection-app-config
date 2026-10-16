@@ -1,0 +1,15 @@
+---
+- name: settings.yml | Read the settings and their defaults
+  ansible.builtin.uri:
+    url: "{{ immich_url }}/api/system-config{{ item }}"
+    headers: "{{ immich_api_headers }}"
+  loop:
+    - ""
+    - /defaults
+  register: immich_configs
+  check_mode: false
+
+- name: settings.yml | Index the settings and their defaults
+  ansible.builtin.set_fact:
+    immich_config_live: "{{ immich_configs.results[0].json }}"
+    immich_config_defaults: "{{ immich_configs.results[1].json }}"

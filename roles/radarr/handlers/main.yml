@@ -1,0 +1,7 @@
+---
+- name: main.yml | Restart Radarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ radarr_container }}.service"
+    state: restarted
+  become: true
+  listen: Restart Radarr

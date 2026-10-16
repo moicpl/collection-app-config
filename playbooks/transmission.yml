@@ -1,0 +1,62 @@
+---
+# Transmission's state on the [nixos_arr] machines, as code: the session
+# settings (speed limits, seeding ratio...) come from
+# inventory/group_vars/nixos_arr/transmission.yml. Run from nixos_playbooks/,
+# after arr_nix.yml:
+#   ansible-playbook config/transmission.yml -e app_action=<action>
+#
+#   configure  set the session settings that differ
+#   backup     save the live values of those settings in the app state store
+#              (appstate/, transmission.yml, same format as the inventory) and
+#              show their differences from the inventory, i.e. changes made in
+#              Transmission's UI
+#   default    erase Transmission's state (settings, torrent list), not the
+#              downloads, and start it again; needs -e app_wipe=true
+#
+# No login (the *arr apps reach it on the arr network), so no secret but the
+# SSH key.
+
+- name: Manage Transmission's state
+  hosts: nixos_arr
+  gather_facts: false
+
+  vars:
+    nixos_ssh_private_key: "{{ bitwarden_secrets[ssh_key_name ~ '_private_key'] }}"
+
+  pre_tasks:
+    - name: transmission.yml | Check the action
+      ansible.builtin.assert:
+        that:
+          - app_action | default('') in ['default', 'configure', 'backup']
+        fail_msg: "Pass -e app_action=default|configure|backup."
+        quiet: true
+      tags: always
+
+    - name: transmission.yml | Get the secrets from Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: get
+        bitwarden_secret_name: "{{ item }}"
+      loop:
+        - "{{ ssh_key_name }}_private_key"
+      tags: always
+
+    - name: transmission.yml | Connect to the host
+      ansible.builtin.include_role:
+        name: moicpl.nixos.nixos
+        tasks_from: connect.yml
+        apply:
+          tags: always
+      tags: always
+
+  tasks:
+    - name: transmission.yml | Manage Transmission's state
+      ansible.builtin.include_role:
+        name: moicpl.app_config.transmission
+      vars:
+        transmission_action: "{{ app_action }}"
+        transmission_wipe: "{{ app_wipe | default(false) | bool }}"
+        transmission_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/transmission"

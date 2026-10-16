@@ -1,0 +1,6 @@
+---
+# Jellyfin on {{ inventory_hostname }}, saved by the jellyfin role (backup), in
+# the format of its variables (inventory/group_vars/<group>/jellyfin.yml): the
+# libraries, and the live values of the settings listed there.
+# The password is in Bitwarden (jellyfin_admin_password).
+{{ jellyfin_state | to_nice_yaml(indent=2, sort_keys=false) }}

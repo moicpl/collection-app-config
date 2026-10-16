@@ -18,18 +18,25 @@ Each takes `app_action`:
 - `backup`: saves the live state in the app state store
   (`appstate/<host>/<app>/`) and shows its drift from the inventory
 - `default`: factory reset with only the admin login; needs `-e app_wipe=true`,
-  and keeps a snapshot on the host first
+  and keeps a snapshot on the host first. The data on `/data` (media, photos,
+  users' files) is never erased
 
 | Playbook | Hosts | Role |
 | --- | --- | --- |
 | `moicpl.app_config.frigate` | `nixos_home` | `moicpl.app_config.frigate`: config.yaml, camera and admin passwords |
 | `moicpl.app_config.sonarr` | `nixos_arr` | `moicpl.app_config.sonarr`: login, root folders, series, download clients |
+| `moicpl.app_config.radarr` | `nixos_arr` | `moicpl.app_config.radarr`: login, root folders, movies, download clients |
+| `moicpl.app_config.lidarr` | `nixos_arr` | `moicpl.app_config.lidarr`: login, root folders, artists, download clients |
 | `moicpl.app_config.prowlarr` | `nixos_arr` | `moicpl.app_config.prowlarr`: login, apps (Sonarr, Radarr, Lidarr) |
+| `moicpl.app_config.transmission` | `nixos_arr` | `moicpl.app_config.transmission`: session settings (no login) |
+| `moicpl.app_config.jellyfin` | `nixos_arr` | `moicpl.app_config.jellyfin`: admin user, libraries, server and transcoding settings |
+| `moicpl.app_config.immich` | `nixos_arr` | `moicpl.app_config.immich`: admin user, settings (as changes from the defaults) |
+| `moicpl.app_config.nextcloud` | `nixos_arr` | `moicpl.app_config.nextcloud`: install, admin user, settings, apps; database and config.php saved encrypted, restored on a new install |
 
 ## Requirements
 
 - `moicpl.nixos` (login to the hosts, `connect.yml` of its `nixos` role) and
-  `community.sops` (Frigate's encrypted backups).
+  `community.sops` (Frigate's and Nextcloud's encrypted backups).
 - The `bitwarden` role (https://github.com/moicpl/bitwarden) in the roles path:
   it isn't a collection, so it is not a galaxy dependency; nixos_playbooks
   clones and links it.

@@ -1,0 +1,59 @@
+---
+# Radarr keeps only a hash of the password: a login attempt tells whether it
+# is the one wanted. A failed login is redirected with loginFailed.
+- name: auth.yml | Try the login
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/login?returnUrl=%2F"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ radarr_admin_username }}"
+      password: "{{ radarr_admin_password }}"
+    follow_redirects: none
+    status_code: 302
+  register: radarr_login
+  check_mode: false
+  no_log: true
+
+- name: auth.yml | Read the security settings
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/config/host"
+    headers: "{{ radarr_api_headers }}"
+  register: radarr_host_config
+  check_mode: false
+
+- name: auth.yml | Set the login
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/config/host/{{ radarr_host_config.json.id }}"
+    method: PUT
+    headers: "{{ radarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ radarr_host_config.json | combine({
+           'authenticationMethod': 'forms',
+           'authenticationRequired': radarr_authentication_required,
+           'username': radarr_admin_username,
+           'password': radarr_admin_password,
+           'passwordConfirmation': radarr_admin_password}) }}
+    status_code: [200, 202]
+  changed_when: true
+  when: >-
+    'loginFailed' in radarr_login.location | default('loginFailed')
+    or radarr_host_config.json.authenticationMethod != 'forms'
+    or radarr_host_config.json.authenticationRequired != radarr_authentication_required
+    or radarr_host_config.json.username != radarr_admin_username
+  notify: Restart Radarr
+  no_log: true
+
+# The new login takes effect at the restart
+- name: auth.yml | Restart Radarr for the new login
+  ansible.builtin.meta: flush_handlers
+
+- name: auth.yml | Wait for Radarr
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/ping"
+  register: radarr_ping
+  until: radarr_ping.status == 200
+  retries: 30
+  delay: 5
+  check_mode: false

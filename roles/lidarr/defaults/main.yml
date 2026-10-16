@@ -1,0 +1,76 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  set the login, add the missing root folders and artists, update
+#              the settings of the listed artists, add or update the download
+#              clients
+#   backup     save the live settings in lidarr_store_dir (lidarr.yml, in the
+#              format of the variables below) and show how they differ from
+#              the variables (changes made in Lidarr's UI)
+#   default    erase Lidarr's config and database, start it empty with the
+#              login only
+lidarr_action: ""
+# default erases data: the run stops unless this is true
+lidarr_wipe: false
+
+# Login (forms), required everywhere or only from outside the local networks
+# (enabled or disabledForLocalAddresses)
+lidarr_admin_username: admin
+# Secret, read by the playbook from Bitwarden
+lidarr_admin_password: ""
+lidarr_authentication_required: enabled
+
+# Root folders, as seen in the container (added, never removed), with
+# lidarr_quality_profile and lidarr_metadata_profile as their defaults
+lidarr_root_folders: []
+# Profiles of the artists that don't name them. Lidarr's built-in quality
+# profiles: Any, Lossless, Standard; metadata profiles (which releases count:
+# albums, EPs, singles...): Standard, None
+lidarr_quality_profile: Any
+lidarr_metadata_profile: Standard
+# Albums monitored when an artist is added: all, future, missing, existing,
+# latest, first, none
+lidarr_artist_monitor: all
+# Search for the missing albums when an artist is added
+lidarr_artist_search: false
+
+# Artists, by MusicBrainz ID (https://musicbrainz.org/artist/<mbid>, or
+# Lidarr's search). Added when missing; quality_profile, metadata_profile and
+# monitored are kept in line. Artists in Lidarr that aren't listed are left
+# alone (configure reports them).
+#   - name: Daft Punk                      # label only
+#     mbid: 056e4f3e-d505-4dad-8ec1-d04f521cbb56
+#     quality_profile: Lossless            # default: lidarr_quality_profile
+#     metadata_profile: Standard           # default: lidarr_metadata_profile
+#     root_folder: /data/media/music       # when added; default: the first root folder
+#     monitored: true
+#     monitor: all                         # when added; default: lidarr_artist_monitor
+#     search: false                        # when added; default: lidarr_artist_search
+lidarr_artists: []
+
+# Download clients, by name: added when missing, kept in line. fields: the
+# client's settings, by their API name (configure lists them on a typo); the
+# others keep Lidarr's defaults. Secret fields (passwords) aren't set: they
+# would need Bitwarden. Clients in Lidarr that aren't listed are left alone.
+#   - name: Transmission
+#     implementation: Transmission         # Transmission, QBittorrent, Sabnzbd...
+#     enable: true
+#     priority: 1
+#     fields:
+#       host: transmission
+#       port: 9091
+#       urlBase: /transmission/
+#       musicCategory: lidarr
+lidarr_download_clients: []
+
+# App state store on the controller: this host's lidarr directory
+lidarr_store_dir: ""
+
+# Container and host paths, as set up by arr_nix.yml
+lidarr_container: lidarr
+lidarr_port: 8686
+lidarr_url: "http://127.0.0.1:{{ lidarr_port }}"
+lidarr_config_dir: /var/lib/lidarr              # /config
+# Copies of the state taken on the host before default erases it; the last
+# lidarr_snapshot_keep are kept
+lidarr_snapshot_dir: /var/lib/appstate/lidarr/snapshots
+lidarr_snapshot_keep: 3

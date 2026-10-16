@@ -1,0 +1,21 @@
+---
+# Jellyfin's state on a host whose container comes from arr_nix.yml:
+# jellyfin_action picks tasks/<action>.yml.
+- name: main.yml | Manage Jellyfin's state
+  become: true
+  block:
+    - name: main.yml | Check that the Jellyfin container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ jellyfin_container }}.service"
+      register: jellyfin_unit
+      changed_when: false
+      check_mode: false
+      failed_when: jellyfin_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ jellyfin_action }} action
+      ansible.builtin.include_tasks: "{{ jellyfin_action }}.yml"

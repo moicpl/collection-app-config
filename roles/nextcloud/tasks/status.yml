@@ -1,0 +1,17 @@
+---
+# occ answers once the container has copied Nextcloud's code (first start,
+# new image); installed tells whether Nextcloud has its database
+- name: status.yml | Wait for Nextcloud
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['status', '--output=json'] }}"
+  register: nextcloud_status_cmd
+  until: nextcloud_status_cmd.rc == 0
+  retries: 60
+  delay: 5
+  changed_when: false
+  check_mode: false
+
+# occ may print a notice before the JSON
+- name: status.yml | Read Nextcloud's status
+  ansible.builtin.set_fact:
+    nextcloud_status: "{{ nextcloud_status_cmd.stdout | regex_replace('^[^{]*', '') | from_json }}"

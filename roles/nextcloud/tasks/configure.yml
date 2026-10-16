@@ -1,0 +1,52 @@
+---
+- name: configure.yml | Connect to Nextcloud
+  ansible.builtin.include_tasks: status.yml
+
+- name: configure.yml | Look for a saved database
+  ansible.builtin.stat:
+    path: "{{ nextcloud_store_dir }}/database.sql.gz.sops"
+  register: nextcloud_saved_db
+  when: not nextcloud_status.installed and nextcloud_restore | bool
+  delegate_to: localhost
+  become: false
+
+- name: configure.yml | Restore the saved database
+  ansible.builtin.include_tasks: restore.yml
+  when: not nextcloud_status.installed and nextcloud_saved_db.stat.exists | default(false)
+
+- name: configure.yml | Install Nextcloud
+  ansible.builtin.include_tasks: install.yml
+  when: not nextcloud_status.installed and not nextcloud_saved_db.stat.exists | default(false)
+
+- name: configure.yml | Set the admin user
+  ansible.builtin.include_tasks: admin.yml
+
+- name: configure.yml | Read the settings
+  ansible.builtin.include_tasks: settings.yml
+
+# occ merges them into config.php and the apps' settings
+- name: configure.yml | Set the settings that differ
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ_stdin + ['config:import'] }}"
+    stdin: "{{ nextcloud_config_changes | to_json }}"
+  changed_when: true
+  when: nextcloud_config_changes | length > 0
+
+# From the app store, which Nextcloud needs to reach
+- name: configure.yml | Install the missing apps
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['app:install', item] }}"
+  changed_when: true
+  loop: "{{ nextcloud_apps_enabled | difference(nextcloud_apps_live.enabled.keys()) | difference(nextcloud_apps_live.disabled.keys()) }}"
+
+- name: configure.yml | Enable the disabled apps
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['app:enable', item] }}"
+  changed_when: true
+  loop: "{{ nextcloud_apps_enabled | intersect(nextcloud_apps_live.disabled.keys()) }}"
+
+- name: configure.yml | Disable the apps
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['app:disable', item] }}"
+  changed_when: true
+  loop: "{{ nextcloud_apps_disabled | intersect(nextcloud_apps_live.enabled.keys()) }}"

@@ -1,0 +1,21 @@
+---
+# Radarr's state on a host whose container comes from arr_nix.yml:
+# radarr_action picks tasks/<action>.yml.
+- name: main.yml | Manage Radarr's state
+  become: true
+  block:
+    - name: main.yml | Check that the Radarr container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ radarr_container }}.service"
+      register: radarr_unit
+      changed_when: false
+      check_mode: false
+      failed_when: radarr_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ radarr_action }} action
+      ansible.builtin.include_tasks: "{{ radarr_action }}.yml"

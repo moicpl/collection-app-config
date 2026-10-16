@@ -1,0 +1,34 @@
+---
+- name: configure.yml | Connect to Immich
+  ansible.builtin.include_tasks: api.yml
+
+- name: configure.yml | Create the admin user
+  ansible.builtin.include_tasks: admin.yml
+  when: not immich_server_config.json.isInitialized
+
+- name: configure.yml | Log in
+  ansible.builtin.include_tasks: login.yml
+
+- name: configure.yml | Read the settings
+  ansible.builtin.include_tasks: settings.yml
+
+- name: configure.yml | Check the settings
+  ansible.builtin.assert:
+    that:
+      - immich_system_config | moicpl.app_config.dict_unknown_keys(immich_config_defaults) | length == 0
+    fail_msg: >-
+      Unknown Immich setting: {{ immich_system_config | moicpl.app_config.dict_unknown_keys(immich_config_defaults) | join(', ') }}
+      (GET {{ immich_url }}/api/system-config/defaults lists them).
+    quiet: true
+
+# Immich validates the whole settings and applies them at once
+- name: configure.yml | Set the settings
+  ansible.builtin.uri:
+    url: "{{ immich_url }}/api/system-config"
+    method: PUT
+    headers: "{{ immich_api_headers }}"
+    body_format: json
+    body: "{{ immich_config_desired }}"
+    status_code: 200
+  changed_when: true
+  when: immich_config_live != immich_config_desired

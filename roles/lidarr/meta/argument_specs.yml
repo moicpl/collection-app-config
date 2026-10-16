@@ -1,0 +1,67 @@
+---
+argument_specs:
+  main:
+    short_description: Manage the state of a Lidarr container
+    description:
+      - configure sets the login, adds the root folders and artists and sets the download clients from the variables.
+      - backup saves the live settings as YAML and shows their drift from the variables.
+      - default erases Lidarr's state (needs lidarr_wipe) and starts it empty with the login.
+    options:
+      lidarr_action:
+        type: str
+        required: true
+        choices: [default, configure, backup]
+        description: What the run does.
+      lidarr_wipe:
+        type: bool
+        default: false
+        description: Allow default to erase the state.
+      lidarr_admin_username:
+        type: str
+        default: admin
+        description: Login user.
+      lidarr_admin_password:
+        type: str
+        required: true
+        no_log: true
+        description: Password of the login user.
+      lidarr_authentication_required:
+        type: str
+        default: enabled
+        choices: [enabled, disabledForLocalAddresses]
+        description: Where the login is required.
+      lidarr_root_folders:
+        type: list
+        elements: str
+        default: []
+        description: Root folders, as seen in the container.
+      lidarr_quality_profile:
+        type: str
+        default: Any
+        description: Quality profile of the root folders and of the artists that don't name one.
+      lidarr_metadata_profile:
+        type: str
+        default: Standard
+        description: Metadata profile of the root folders and of the artists that don't name one.
+      lidarr_artist_monitor:
+        type: str
+        default: all
+        description: Albums monitored when an artist is added.
+      lidarr_artist_search:
+        type: bool
+        default: false
+        description: Search for the missing albums when an artist is added.
+      lidarr_artists:
+        type: list
+        elements: dict
+        default: []
+        description: Artists, by MusicBrainz ID (see defaults/main.yml).
+      lidarr_download_clients:
+        type: list
+        elements: dict
+        default: []
+        description: Download clients, by name (see defaults/main.yml).
+      lidarr_store_dir:
+        type: str
+        required: true
+        description: This host's lidarr directory in the app state store, on the controller.

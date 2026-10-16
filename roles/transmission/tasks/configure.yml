@@ -1,0 +1,27 @@
+---
+- name: configure.yml | Connect to Transmission's RPC
+  ansible.builtin.include_tasks: rpc.yml
+
+- name: configure.yml | Check the settings
+  ansible.builtin.assert:
+    that:
+      - transmission_settings.keys() | difference(transmission_session.keys()) | length == 0
+    fail_msg: >-
+      Unknown setting: {{ transmission_settings.keys() | difference(transmission_session.keys()) | join(', ') }}
+      (Transmission has {{ transmission_session.keys() | sort | join(', ') }}).
+    quiet: true
+
+# Transmission saves them in settings.json
+- name: configure.yml | Set the settings that differ
+  ansible.builtin.uri:
+    url: "{{ transmission_rpc_url }}"
+    method: POST
+    headers: "{{ transmission_rpc_headers }}"
+    body_format: json
+    body:
+      method: session-set
+      arguments: "{{ transmission_settings_changes }}"
+  register: transmission_session_set
+  failed_when: transmission_session_set.json.result | default('') != 'success'
+  changed_when: true
+  when: transmission_settings_changes | length > 0

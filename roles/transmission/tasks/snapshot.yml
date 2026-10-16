@@ -1,0 +1,35 @@
+---
+# Transmission is stopped. Its settings, torrent list and VPN state.
+- name: snapshot.yml | Create the snapshot directory
+  ansible.builtin.file:
+    path: "{{ transmission_snapshot_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: snapshot.yml | Save the current state
+  ansible.builtin.command:
+    argv:
+      - tar
+      - --create
+      - --gzip
+      - --file={{ transmission_snapshot_dir }}/{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}.tar.gz
+      - --directory=/
+      - --ignore-failed-read
+      - "{{ transmission_config_dir | relpath('/') }}"
+  changed_when: true
+
+- name: snapshot.yml | Find the snapshots
+  ansible.builtin.find:
+    paths: "{{ transmission_snapshot_dir }}"
+    patterns: "*.tar.gz"
+  register: transmission_snapshots_found
+
+- name: snapshot.yml | Remove the oldest snapshots
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (transmission_snapshots_found.files | sort(attribute='mtime', reverse=true))[transmission_snapshot_keep | int :] }}"
+  loop_control:
+    label: "{{ item.path }}"

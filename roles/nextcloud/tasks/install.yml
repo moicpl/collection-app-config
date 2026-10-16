@@ -1,0 +1,17 @@
+---
+# The database user from the container's environment creates Nextcloud's own
+# (oc_<admin>) at the install. occ takes the passwords only as options.
+- name: install.yml | Install Nextcloud
+  ansible.builtin.command:
+    argv: >-
+      {{ nextcloud_occ + ['maintenance:install',
+           '--database=pgsql',
+           '--database-host=' ~ nextcloud_db_host,
+           '--database-name=' ~ nextcloud_db_name,
+           '--database-user=' ~ nextcloud_db_user,
+           '--database-pass=' ~ nextcloud_db_password,
+           '--admin-user=' ~ nextcloud_admin_username,
+           '--admin-pass=' ~ nextcloud_admin_password,
+           '--data-dir=/var/www/html/data'] }}
+  changed_when: true
+  no_log: true

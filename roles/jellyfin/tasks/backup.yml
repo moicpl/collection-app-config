@@ -1,0 +1,84 @@
+---
+- name: backup.yml | Connect to Jellyfin
+  ansible.builtin.include_tasks: api.yml
+
+- name: backup.yml | Check that Jellyfin is set up
+  ansible.builtin.assert:
+    that:
+      - jellyfin_public_info.json.StartupWizardCompleted | default(false)
+    fail_msg: "Jellyfin on {{ inventory_hostname }} has no admin user yet: run app_action=configure."
+    quiet: true
+
+- name: backup.yml | Log in
+  ansible.builtin.include_tasks: login.yml
+
+- name: backup.yml | Read the live settings
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}{{ item }}"
+    headers: "{{ jellyfin_api_headers }}"
+  loop:
+    - /Library/VirtualFolders
+    - /System/Configuration
+    - /System/Configuration/encoding
+  register: jellyfin_lists
+  check_mode: false
+
+- name: backup.yml | Index the libraries
+  ansible.builtin.set_fact:
+    jellyfin_virtual_folders: "{{ jellyfin_lists.results[0].json }}"
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ jellyfin_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# Same format as the variables, so the file can be compared with them, or
+# copied into the inventory: the libraries, and the live values of the
+# settings listed in the variables. Plain text: no secrets in it.
+- name: backup.yml | Save the live settings in the store
+  ansible.builtin.template:
+    src: jellyfin.yml.j2
+    dest: "{{ jellyfin_store_dir }}/jellyfin.yml"
+    mode: "0644"
+  vars:
+    jellyfin_state:
+      jellyfin_admin_username: "{{ jellyfin_login.json.User.Name }}"
+      jellyfin_libraries: "{{ jellyfin_libraries_state }}"
+      jellyfin_server_config: >-
+        {{ dict(jellyfin_server_config.keys() | sort
+                | zip(jellyfin_server_config.keys() | sort | map('extract', jellyfin_lists.results[1].json))) }}
+      jellyfin_encoding_config: >-
+        {{ dict(jellyfin_encoding_config.keys() | sort
+                | zip(jellyfin_encoding_config.keys() | sort | map('extract', jellyfin_lists.results[2].json))) }}
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Jellyfin's UI, to
+# port to the inventory first
+- name: backup.yml | Compare the live settings with the inventory
+  ansible.builtin.template:
+    src: jellyfin.yml.j2
+    dest: "{{ jellyfin_store_dir }}/jellyfin.yml"
+    mode: "0644"
+  vars:
+    jellyfin_state:
+      jellyfin_admin_username: "{{ jellyfin_admin_username }}"
+      jellyfin_libraries: "{{ jellyfin_libraries_desired }}"
+      jellyfin_server_config: "{{ dict(jellyfin_server_config | dictsort) }}"
+      jellyfin_encoding_config: "{{ dict(jellyfin_encoding_config | dictsort) }}"
+  check_mode: true
+  diff: true
+  register: jellyfin_drift
+  delegate_to: localhost
+  become: false
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      Jellyfin's settings differ from the inventory (diff above: - live, + inventory).
+      Move the changes to inventory/group_vars/nixos_arr/jellyfin.yml: the next
+      configure run reverts the settings and adds the missing libraries and paths.
+  when: jellyfin_drift is changed

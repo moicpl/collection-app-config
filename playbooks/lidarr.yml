@@ -1,0 +1,76 @@
+---
+# Lidarr's state on the [nixos_arr] machines, as code: the login, root folders
+# and artists come from inventory/group_vars/nixos_arr/lidarr.yml. Run from
+# nixos_playbooks/, after arr_nix.yml:
+#   ansible-playbook config/lidarr.yml -e app_action=<action>
+#
+#   configure  set the login, add the missing root folders and artists, put back
+#              the settings of the listed artists, set the download clients
+#   backup     save the live settings in the app state store (appstate/,
+#              lidarr.yml, same format as the inventory) and show their
+#              differences from the inventory, i.e. changes made in Lidarr's UI
+#   default    erase Lidarr's config and database (not the media) and start it
+#              empty, with the login only; needs -e app_wipe=true
+#
+# Secrets in Bitwarden: lidarr_admin_password, generated on the first run.
+
+- name: Manage Lidarr's state
+  hosts: nixos_arr
+  gather_facts: false
+
+  vars:
+    nixos_ssh_private_key: "{{ bitwarden_secrets[ssh_key_name ~ '_private_key'] }}"
+
+  pre_tasks:
+    - name: lidarr.yml | Check the action
+      ansible.builtin.assert:
+        that:
+          - app_action | default('') in ['default', 'configure', 'backup']
+        fail_msg: "Pass -e app_action=default|configure|backup."
+        quiet: true
+      tags: always
+
+    - name: lidarr.yml | Create the login password in Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: put
+        bitwarden_secret_name: lidarr_admin_password
+        bitwarden_secret_content: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=24) }}"
+        bitwarden_secret_note: "Lidarr login ({{ lidarr_admin_username }}) on [nixos_arr], created by moicpl.app_config.lidarr"
+        bitwarden_secret_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/lidarr.yml"
+      when: lidarr_admin_password_bws_id is not defined
+      tags: always
+
+    - name: lidarr.yml | Get the secrets from Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: get
+        bitwarden_secret_name: "{{ item }}"
+      loop:
+        - "{{ ssh_key_name }}_private_key"
+        - lidarr_admin_password
+      tags: always
+
+    - name: lidarr.yml | Connect to the host
+      ansible.builtin.include_role:
+        name: moicpl.nixos.nixos
+        tasks_from: connect.yml
+        apply:
+          tags: always
+      tags: always
+
+  tasks:
+    - name: lidarr.yml | Manage Lidarr's state
+      ansible.builtin.include_role:
+        name: moicpl.app_config.lidarr
+      vars:
+        lidarr_action: "{{ app_action }}"
+        lidarr_wipe: "{{ app_wipe | default(false) | bool }}"
+        lidarr_admin_password: "{{ bitwarden_secrets.lidarr_admin_password }}"
+        lidarr_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/lidarr"

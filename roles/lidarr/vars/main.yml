@@ -1,0 +1,45 @@
+---
+lidarr_api_headers:
+  X-Api-Key: "{{ lidarr_api_key }}"
+
+# The listed artists with their defaults, in the format backup saves (built as
+# JSON: a template made of several parts gives a string)
+lidarr_artists_desired: "{{ lidarr_artists_desired_json | from_json }}"
+lidarr_artists_desired_json: >-
+  [{% for artist in lidarr_artists | sort(attribute='mbid') %}
+  {{ {'name': artist.name | default(''),
+      'mbid': artist.mbid,
+      'quality_profile': artist.quality_profile | default(lidarr_quality_profile),
+      'metadata_profile': artist.metadata_profile | default(lidarr_metadata_profile),
+      'root_folder': artist.root_folder | default(lidarr_root_folders | first),
+      'monitored': artist.monitored | default(true) | bool} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]
+
+# Download clients as {name, implementation, enable, priority, fields}: fields
+# complete (Lidarr's defaults for those not given), without the empty ones and
+# the passwords (masked by the API). The listed ones, and the live ones; they
+# need lidarr_download_client_schema and lidarr_download_clients_api (the API's
+# lists of templates and of clients).
+lidarr_download_clients_desired: "{{ lidarr_download_clients_desired_json | from_json }}"
+lidarr_download_clients_desired_json: >-
+  [{% for client in lidarr_download_clients | sort(attribute='name') %}
+  {% set schema = (lidarr_download_client_schema | selectattr('implementation', 'equalto', client.implementation) | first).fields
+                  | rejectattr('type', 'equalto', 'password') | selectattr('value', 'defined') | list %}
+  {{ {'name': client.name,
+      'implementation': client.implementation,
+      'enable': client.enable | default(true) | bool,
+      'priority': client.priority | default(1) | int,
+      'fields': dict(schema | map(attribute='name') | zip(schema | map(attribute='value')))
+                | combine(client.fields | default({})) | dict2items | rejectattr('value', 'none') | items2dict} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]
+lidarr_download_clients_state: "{{ lidarr_download_clients_state_json | from_json }}"
+lidarr_download_clients_state_json: >-
+  [{% for client in lidarr_download_clients_api | sort(attribute='name') %}
+  {% set fields = client.fields | rejectattr('type', 'equalto', 'password') | selectattr('value', 'defined') | list %}
+  {{ {'name': client.name,
+      'implementation': client.implementation,
+      'enable': client.enable,
+      'priority': client.priority,
+      'fields': dict(fields | map(attribute='name') | zip(fields | map(attribute='value')))
+                | dict2items | rejectattr('value', 'none') | items2dict} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]

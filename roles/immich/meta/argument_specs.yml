@@ -1,0 +1,39 @@
+---
+argument_specs:
+  main:
+    short_description: Manage the state of an Immich container
+    description:
+      - configure creates the admin user on the first start and sets the settings from the variables.
+      - backup saves the settings that differ from Immich's defaults as YAML and shows their drift from the variables.
+      - default erases Immich's database (needs immich_wipe), not the photo files, and starts it empty with the admin user.
+    options:
+      immich_action:
+        type: str
+        required: true
+        choices: [default, configure, backup]
+        description: What the run does.
+      immich_wipe:
+        type: bool
+        default: false
+        description: Allow default to erase the database.
+      immich_admin_email:
+        type: str
+        default: admin@example.com
+        description: Email of the admin user, its login.
+      immich_admin_name:
+        type: str
+        default: Admin
+        description: Name of the admin user.
+      immich_admin_password:
+        type: str
+        required: true
+        no_log: true
+        description: Password of the admin user.
+      immich_system_config:
+        type: dict
+        default: {}
+        description: Settings that differ from Immich's defaults, in the format of its API.
+      immich_store_dir:
+        type: str
+        required: true
+        description: This host's immich directory in the app state store, on the controller.

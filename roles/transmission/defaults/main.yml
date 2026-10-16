@@ -1,0 +1,38 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  set the session settings (transmission_settings)
+#   backup     save the live values of those settings in transmission_store_dir
+#              (transmission.yml, in the format of the variables below) and
+#              show how they differ from the variables (changes made in the UI)
+#   default    erase Transmission's state (settings, torrent list, VPN state),
+#              not the downloads, and start it again
+transmission_action: ""
+# default erases data: the run stops unless this is true
+transmission_wipe: false
+
+# Session settings, by their RPC name
+# (https://github.com/transmission/transmission/blob/main/docs/rpc-spec.md,
+# session-set): set when they differ, others left alone. Speeds in kB/s.
+#   speed-limit-down: 50000
+#   speed-limit-down-enabled: true
+#   seedRatioLimit: 10
+#   seedRatioLimited: true
+# The paths and the RPC whitelist are set by arr_nix.yml (container
+# environment, which overrides settings.json at each start): don't set them here.
+transmission_settings: {}
+
+# App state store on the controller: this host's transmission directory
+transmission_store_dir: ""
+
+# Container and host paths, as set up by arr_nix.yml
+transmission_container: transmission
+transmission_port: 9091
+transmission_rpc_url: "http://127.0.0.1:{{ transmission_port }}/transmission/rpc"
+transmission_config_dir: /var/lib/transmission  # /config
+# Owner of the config directory: the media user of arr_nix.yml (PUID, PGID)
+transmission_config_owner: "2000"
+transmission_config_group: "2000"
+# Copies of the state taken on the host before default erases it; the last
+# transmission_snapshot_keep are kept
+transmission_snapshot_dir: /var/lib/appstate/transmission/snapshots
+transmission_snapshot_keep: 3

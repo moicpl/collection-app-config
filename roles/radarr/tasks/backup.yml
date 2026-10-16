@@ -1,0 +1,93 @@
+---
+- name: backup.yml | Connect to Radarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: backup.yml | Read the live settings
+  ansible.builtin.uri:
+    url: "{{ radarr_url }}/api/v3/{{ item }}"
+    headers: "{{ radarr_api_headers }}"
+  loop:
+    - config/host
+    - rootfolder
+    - qualityprofile
+    - movie
+    - downloadclient
+    - downloadclient/schema
+  register: radarr_lists
+  check_mode: false
+
+- name: backup.yml | Index the download clients and their templates
+  ansible.builtin.set_fact:
+    radarr_download_clients_api: "{{ radarr_lists.results[4].json }}"
+    radarr_download_client_schema: "{{ radarr_lists.results[5].json }}"
+
+# Same format as the variables, so the file can be compared with them, or
+# copied into the inventory
+- name: backup.yml | Gather the live settings
+  ansible.builtin.set_fact:
+    radarr_state_live:
+      radarr_admin_username: "{{ host.username }}"
+      radarr_authentication_required: "{{ host.authenticationRequired }}"
+      radarr_root_folders: "{{ radarr_lists.results[1].json | map(attribute='path') | sort }}"
+      radarr_movies: "{{ movies_json | from_json }}"
+      radarr_download_clients: "{{ radarr_download_clients_state }}"
+  vars:
+    # Built as JSON: a template made of several parts gives a string
+    movies_json: >-
+      [{% for movie in radarr_lists.results[3].json | sort(attribute='tmdbId') %}
+      {{ {'title': movie.title,
+          'tmdb_id': movie.tmdbId,
+          'quality_profile': profiles[movie.qualityProfileId],
+          'root_folder': movie.rootFolderPath | default(movie.path | dirname) | regex_replace('/$', ''),
+          'monitored': movie.monitored,
+          'minimum_availability': movie.minimumAvailability} | to_json }}{{ '' if loop.last else ',' }}
+      {% endfor %}]
+    host: "{{ radarr_lists.results[0].json }}"
+    profiles: "{{ dict(radarr_lists.results[2].json | map(attribute='id') | zip(radarr_lists.results[2].json | map(attribute='name'))) }}"
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ radarr_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# Plain text: no secrets in it
+- name: backup.yml | Save the live settings in the store
+  ansible.builtin.template:
+    src: radarr.yml.j2
+    dest: "{{ radarr_store_dir }}/radarr.yml"
+    mode: "0644"
+  vars:
+    radarr_state: "{{ radarr_state_live }}"
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Radarr's UI, to
+# port to the inventory first
+- name: backup.yml | Compare the live settings with the inventory
+  ansible.builtin.template:
+    src: radarr.yml.j2
+    dest: "{{ radarr_store_dir }}/radarr.yml"
+    mode: "0644"
+  vars:
+    radarr_state:
+      radarr_admin_username: "{{ radarr_admin_username }}"
+      radarr_authentication_required: "{{ radarr_authentication_required }}"
+      radarr_root_folders: "{{ radarr_root_folders | sort }}"
+      radarr_movies: "{{ radarr_movies_desired }}"
+      radarr_download_clients: "{{ radarr_download_clients_desired }}"
+  check_mode: true
+  diff: true
+  register: radarr_drift
+  delegate_to: localhost
+  become: false
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      Radarr's settings differ from the inventory (diff above: - live, + inventory).
+      Move the changes to inventory/group_vars/nixos_arr/radarr.yml: the next
+      configure run reverts the movie settings and adds what is missing.
+  when: radarr_drift is changed

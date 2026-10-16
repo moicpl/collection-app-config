@@ -1,0 +1,67 @@
+---
+- name: backup.yml | Connect to Immich
+  ansible.builtin.include_tasks: api.yml
+
+- name: backup.yml | Check that Immich is set up
+  ansible.builtin.assert:
+    that:
+      - immich_server_config.json.isInitialized
+    fail_msg: "Immich on {{ inventory_hostname }} has no admin user yet: run app_action=configure."
+    quiet: true
+
+- name: backup.yml | Log in
+  ansible.builtin.include_tasks: login.yml
+
+- name: backup.yml | Read the settings
+  ansible.builtin.include_tasks: settings.yml
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ immich_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# Same format as the variables (the settings that differ from the defaults),
+# so the file can be compared with them, or copied into the inventory. Plain
+# text: Immich's settings hold no passwords (OAuth's client secret aside:
+# don't use OAuth without encrypting this file).
+- name: backup.yml | Save the live settings in the store
+  ansible.builtin.template:
+    src: immich.yml.j2
+    dest: "{{ immich_store_dir }}/immich.yml"
+    mode: "0644"
+  vars:
+    immich_state:
+      immich_admin_email: "{{ immich_login.json.userEmail }}"
+      immich_admin_name: "{{ immich_login.json.name }}"
+      immich_system_config: "{{ immich_config_live | moicpl.app_config.dict_changes(immich_config_defaults) }}"
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Immich's UI, to
+# port to the inventory first
+- name: backup.yml | Compare the live settings with the inventory
+  ansible.builtin.template:
+    src: immich.yml.j2
+    dest: "{{ immich_store_dir }}/immich.yml"
+    mode: "0644"
+  vars:
+    immich_state:
+      immich_admin_email: "{{ immich_admin_email }}"
+      immich_admin_name: "{{ immich_admin_name }}"
+      immich_system_config: "{{ immich_config_desired | moicpl.app_config.dict_changes(immich_config_defaults) }}"
+  check_mode: true
+  diff: true
+  register: immich_drift
+  delegate_to: localhost
+  become: false
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      Immich's settings differ from the inventory (diff above: - live, + inventory).
+      Move the changes to inventory/group_vars/nixos_arr/immich.yml: the next
+      configure run reverts them.
+  when: immich_drift is changed

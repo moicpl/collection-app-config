@@ -1,0 +1,34 @@
+---
+# Jellyfin keeps only a hash of the password and changes it only given the
+# current one: a login that fails can't be repaired from here
+- name: login.yml | Log in as the admin user
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Users/AuthenticateByName"
+    method: POST
+    headers:
+      Authorization: "{{ jellyfin_client }}"
+    body_format: json
+    body:
+      Username: "{{ jellyfin_admin_username }}"
+      Pw: "{{ jellyfin_admin_password }}"
+    status_code: [200, 401]
+  register: jellyfin_login
+  check_mode: false
+  no_log: true
+
+- name: login.yml | Check the login
+  ansible.builtin.assert:
+    that:
+      - jellyfin_login.status == 200
+      - jellyfin_login.json.User.Policy.IsAdministrator
+    fail_msg: >-
+      {{ jellyfin_admin_username }} can't log in to Jellyfin on {{ inventory_hostname }} with
+      jellyfin_admin_password from Bitwarden, or isn't an administrator. Jellyfin changes a
+      password only given the current one: set it in Jellyfin's UI (Dashboard > Users), or
+      start over with app_action=default (erases Jellyfin's config, not the media).
+    quiet: true
+
+- name: login.yml | Use the session token
+  ansible.builtin.set_fact:
+    jellyfin_token: "{{ jellyfin_login.json.AccessToken }}"
+  no_log: true

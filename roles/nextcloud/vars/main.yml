@@ -1,0 +1,37 @@
+---
+# occ, as www-data in the Nextcloud container; with stdin, or with OC_PASS
+# from the task's environment (a password never on the command line)
+nextcloud_occ: [podman, exec, --user, www-data, "{{ nextcloud_container }}", php, occ]
+nextcloud_occ_stdin: [podman, exec, --interactive, --user, www-data, "{{ nextcloud_container }}", php, occ]
+nextcloud_occ_pass: [podman, exec, --env, OC_PASS, --user, www-data, "{{ nextcloud_container }}", php, occ]
+
+# Reading a file of the store (saved by backup as binary): decrypted in memory
+nextcloud_sops_read:
+  input_type: binary
+  output_type: binary
+  rstrip: false
+  age_key: "{{ nextcloud_age_key }}"
+
+# The settings wanted, the role's own included
+nextcloud_system_config_desired: >-
+  {{ {'trusted_domains': nextcloud_trusted_domains, 'overwrite.cli.url': nextcloud_cli_url}
+     | combine(nextcloud_system_config) }}
+nextcloud_app_config_desired: >-
+  {{ {'core': {'backgroundjobs_mode': 'cron'}} | combine(nextcloud_app_config, recursive=true) }}
+
+# The wanted settings that differ from the live ones (nextcloud_config_live,
+# from occ config:list), in occ config:import's format; apps' values as text
+nextcloud_config_changes: "{{ nextcloud_config_changes_json | from_json }}"
+nextcloud_config_changes_json: >-
+  {% set system = {} %}
+  {% for key, value in nextcloud_system_config_desired.items() if nextcloud_config_live.system[key] | default(none) != value %}
+  {%   set _ = system.update({key: value}) %}
+  {% endfor %}
+  {% set apps = {} %}
+  {% for app, settings in nextcloud_app_config_desired.items() %}
+  {%   for key, value in settings.items()
+         if (nextcloud_config_live.apps[app] | default({}))[key] | default(none) | string != value | string %}
+  {%     set _ = apps.update({app: apps[app] | default({}) | combine({key: value | string})}) %}
+  {%   endfor %}
+  {% endfor %}
+  {{ {'system': system, 'apps': apps} | dict2items | rejectattr('value', 'equalto', {}) | items2dict | to_json }}

@@ -1,0 +1,21 @@
+---
+# Transmission's state on a host whose container comes from arr_nix.yml:
+# transmission_action picks tasks/<action>.yml.
+- name: main.yml | Manage Transmission's state
+  become: true
+  block:
+    - name: main.yml | Check that the Transmission container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ transmission_container }}.service"
+      register: transmission_unit
+      changed_when: false
+      check_mode: false
+      failed_when: transmission_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ transmission_action }} action
+      ansible.builtin.include_tasks: "{{ transmission_action }}.yml"

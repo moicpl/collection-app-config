@@ -1,0 +1,39 @@
+---
+- name: default.yml | Check that erasing Transmission's state is allowed
+  ansible.builtin.assert:
+    that:
+      - transmission_wipe | bool
+    fail_msg: >-
+      default erases Transmission's state (settings, torrent list) on
+      {{ inventory_hostname }}, not the downloads: pass -e app_wipe=true.
+    quiet: true
+
+- name: default.yml | Stop Transmission
+  ansible.builtin.systemd_service:
+    name: "podman-{{ transmission_container }}.service"
+    state: stopped
+
+- name: default.yml | Snapshot the current state
+  ansible.builtin.include_tasks: snapshot.yml
+
+- name: default.yml | Erase the state
+  ansible.builtin.file:
+    path: "{{ transmission_config_dir }}"
+    state: absent
+
+- name: default.yml | Recreate the config directory
+  ansible.builtin.file:
+    path: "{{ transmission_config_dir }}"
+    state: directory
+    owner: "{{ transmission_config_owner }}"
+    group: "{{ transmission_config_group }}"
+    mode: "0775"
+
+# Transmission starts with the settings of the container's environment
+- name: default.yml | Start Transmission
+  ansible.builtin.systemd_service:
+    name: "podman-{{ transmission_container }}.service"
+    state: started
+
+- name: default.yml | Wait for Transmission
+  ansible.builtin.include_tasks: rpc.yml

@@ -1,0 +1,76 @@
+---
+# Immich's state on the [nixos_arr] machines, as code: the admin user and the
+# settings come from inventory/group_vars/nixos_arr/immich.yml. Run from
+# nixos_playbooks/, after arr_nix.yml:
+#   ansible-playbook config/immich.yml -e app_action=<action>
+#
+#   configure  create the admin user on the first start, set the settings
+#   backup     save the settings that differ from Immich's defaults in the app
+#              state store (appstate/, immich.yml, same format as the
+#              inventory) and show their differences from the inventory, i.e.
+#              changes made in Immich's UI
+#   default    erase Immich's database (not the photo files) and start it
+#              empty, with the admin user only; needs -e app_wipe=true
+#
+# Secrets in Bitwarden: immich_admin_password, generated on the first run.
+
+- name: Manage Immich's state
+  hosts: nixos_arr
+  gather_facts: false
+
+  vars:
+    nixos_ssh_private_key: "{{ bitwarden_secrets[ssh_key_name ~ '_private_key'] }}"
+
+  pre_tasks:
+    - name: immich.yml | Check the action
+      ansible.builtin.assert:
+        that:
+          - app_action | default('') in ['default', 'configure', 'backup']
+        fail_msg: "Pass -e app_action=default|configure|backup."
+        quiet: true
+      tags: always
+
+    - name: immich.yml | Create the login password in Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: put
+        bitwarden_secret_name: immich_admin_password
+        bitwarden_secret_content: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=24) }}"
+        bitwarden_secret_note: "Immich admin user ({{ immich_admin_email }}) on [nixos_arr], created by moicpl.app_config.immich"
+        bitwarden_secret_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/immich.yml"
+      when: immich_admin_password_bws_id is not defined
+      tags: always
+
+    - name: immich.yml | Get the secrets from Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: get
+        bitwarden_secret_name: "{{ item }}"
+      loop:
+        - "{{ ssh_key_name }}_private_key"
+        - immich_admin_password
+      tags: always
+
+    - name: immich.yml | Connect to the host
+      ansible.builtin.include_role:
+        name: moicpl.nixos.nixos
+        tasks_from: connect.yml
+        apply:
+          tags: always
+      tags: always
+
+  tasks:
+    - name: immich.yml | Manage Immich's state
+      ansible.builtin.include_role:
+        name: moicpl.app_config.immich
+      vars:
+        immich_action: "{{ app_action }}"
+        immich_wipe: "{{ app_wipe | default(false) | bool }}"
+        immich_admin_password: "{{ bitwarden_secrets.immich_admin_password }}"
+        immich_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/immich"

@@ -1,0 +1,13 @@
+---
+- name: admin.yml | Create the admin user
+  ansible.builtin.uri:
+    url: "{{ immich_url }}/api/auth/admin-sign-up"
+    method: POST
+    body_format: json
+    body:
+      email: "{{ immich_admin_email }}"
+      name: "{{ immich_admin_name }}"
+      password: "{{ immich_admin_password }}"
+    status_code: 201
+  changed_when: true
+  no_log: true

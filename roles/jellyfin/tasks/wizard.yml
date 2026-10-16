@@ -1,0 +1,49 @@
+---
+# First start: the wizard's steps, unauthenticated until it completes
+- name: wizard.yml | Set the language and metadata country
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Startup/Configuration"
+    method: POST
+    body_format: json
+    body:
+      UICulture: "{{ jellyfin_ui_culture }}"
+      MetadataCountryCode: "{{ jellyfin_metadata_country }}"
+      PreferredMetadataLanguage: "{{ jellyfin_metadata_language }}"
+    status_code: 204
+  changed_when: true
+
+# Jellyfin creates the first user when it is read
+- name: wizard.yml | Read the first user
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Startup/User"
+  check_mode: false
+
+- name: wizard.yml | Create the admin user
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Startup/User"
+    method: POST
+    body_format: json
+    body:
+      Name: "{{ jellyfin_admin_username }}"
+      Password: "{{ jellyfin_admin_password }}"
+    status_code: 204
+  changed_when: true
+  no_log: true
+
+- name: wizard.yml | Allow remote access, without UPnP
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Startup/RemoteAccess"
+    method: POST
+    body_format: json
+    body:
+      EnableRemoteAccess: true
+      EnableAutomaticPortMapping: false
+    status_code: 204
+  changed_when: true
+
+- name: wizard.yml | Complete the wizard
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Startup/Complete"
+    method: POST
+    status_code: 204
+  changed_when: true

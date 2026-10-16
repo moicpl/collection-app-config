@@ -1,0 +1,21 @@
+---
+# Nextcloud's state on a host whose containers come from arr_nix.yml:
+# nextcloud_action picks tasks/<action>.yml.
+- name: main.yml | Manage Nextcloud's state
+  become: true
+  block:
+    - name: main.yml | Check that the Nextcloud container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ nextcloud_container }}.service"
+      register: nextcloud_unit
+      changed_when: false
+      check_mode: false
+      failed_when: nextcloud_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ nextcloud_action }} action
+      ansible.builtin.include_tasks: "{{ nextcloud_action }}.yml"

@@ -1,0 +1,75 @@
+---
+argument_specs:
+  main:
+    short_description: Manage the state of a Nextcloud container
+    description:
+      - configure restores the saved database, or else installs Nextcloud, on the first start.
+      - configure keeps the admin password and sets the settings and apps from the variables.
+      - backup saves the database and config.php encrypted with sops, the listed settings and apps as YAML, and shows their drift from the variables.
+      - default erases Nextcloud's config and database (needs nextcloud_wipe), sets the users' files aside and installs it again.
+    options:
+      nextcloud_action:
+        type: str
+        required: true
+        choices: [default, configure, backup]
+        description: What the run does.
+      nextcloud_wipe:
+        type: bool
+        default: false
+        description: Allow default to erase the state.
+      nextcloud_admin_username:
+        type: str
+        default: admin
+        description: Admin user.
+      nextcloud_admin_password:
+        type: str
+        required: true
+        no_log: true
+        description: Password of the admin user.
+      nextcloud_db_password:
+        type: str
+        required: true
+        no_log: true
+        description: Password of the database user, for the install.
+      nextcloud_trusted_domains:
+        type: list
+        elements: str
+        description: Names Nextcloud answers to.
+      nextcloud_cli_url:
+        type: str
+        description: Nextcloud's URL in the links it makes outside a request.
+      nextcloud_system_config:
+        type: dict
+        default: {}
+        description: config.php settings.
+      nextcloud_app_config:
+        type: dict
+        default: {}
+        description: Apps' settings, app -> key -> value.
+      nextcloud_apps_enabled:
+        type: list
+        elements: str
+        default: []
+        description: Apps enabled, installed from the app store when missing.
+      nextcloud_apps_disabled:
+        type: list
+        elements: str
+        default: []
+        description: Apps disabled.
+      nextcloud_store_dir:
+        type: str
+        required: true
+        description: This host's nextcloud directory in the app state store, on the controller.
+      nextcloud_age_recipient:
+        type: str
+        required: true
+        description: Age public key the saved database and config.php are encrypted to.
+      nextcloud_age_key:
+        type: str
+        required: true
+        no_log: true
+        description: Age private key, to read them.
+      nextcloud_restore:
+        type: bool
+        default: true
+        description: On the first start, restore the saved database instead of installing an empty Nextcloud.

@@ -1,0 +1,34 @@
+---
+# Transmission starts once the VPN is up. Its RPC first answers 409 with the
+# session ID that the next requests send back (CSRF protection).
+- name: rpc.yml | Wait for Transmission
+  ansible.builtin.uri:
+    url: "{{ transmission_rpc_url }}"
+    method: POST
+    status_code: 409
+  register: transmission_handshake
+  until: transmission_handshake.status == 409
+  retries: 60
+  delay: 5
+  check_mode: false
+
+- name: rpc.yml | Use the RPC session ID
+  ansible.builtin.set_fact:
+    transmission_rpc_headers:
+      X-Transmission-Session-Id: "{{ transmission_handshake.x_transmission_session_id }}"
+
+- name: rpc.yml | Read the session settings
+  ansible.builtin.uri:
+    url: "{{ transmission_rpc_url }}"
+    method: POST
+    headers: "{{ transmission_rpc_headers }}"
+    body_format: json
+    body:
+      method: session-get
+  register: transmission_session_get
+  failed_when: transmission_session_get.json.result | default('') != 'success'
+  check_mode: false
+
+- name: rpc.yml | Index the session settings
+  ansible.builtin.set_fact:
+    transmission_session: "{{ transmission_session_get.json.arguments }}"

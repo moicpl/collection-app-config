@@ -1,0 +1,51 @@
+---
+- name: backup.yml | Connect to Transmission's RPC
+  ansible.builtin.include_tasks: rpc.yml
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ transmission_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# The live values of the settings in the variables, in their format, so the
+# file can be compared with them, or copied into the inventory. Plain text: no
+# secrets in it.
+- name: backup.yml | Save the live settings in the store
+  ansible.builtin.template:
+    src: transmission.yml.j2
+    dest: "{{ transmission_store_dir }}/transmission.yml"
+    mode: "0644"
+  vars:
+    transmission_state:
+      transmission_settings: >-
+        {{ dict(transmission_settings.keys() | sort
+                | zip(transmission_settings.keys() | sort | map('extract', transmission_session))) }}
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Transmission's UI,
+# to port to the inventory first
+- name: backup.yml | Compare the live settings with the inventory
+  ansible.builtin.template:
+    src: transmission.yml.j2
+    dest: "{{ transmission_store_dir }}/transmission.yml"
+    mode: "0644"
+  vars:
+    transmission_state:
+      transmission_settings: "{{ dict(transmission_settings | dictsort) }}"
+  check_mode: true
+  diff: true
+  register: transmission_drift
+  delegate_to: localhost
+  become: false
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      Transmission's settings differ from the inventory (diff above: - live, + inventory).
+      Move the changes to inventory/group_vars/nixos_arr/transmission.yml: the next
+      configure run reverts them.
+  when: transmission_drift is changed

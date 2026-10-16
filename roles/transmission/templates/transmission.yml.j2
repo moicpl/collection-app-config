@@ -1,0 +1,6 @@
+---
+# Transmission on {{ inventory_hostname }}, saved by the transmission role
+# (backup), in the format of its variables
+# (inventory/group_vars/<group>/transmission.yml): the live values of the
+# settings listed there.
+{{ transmission_state | to_nice_yaml(indent=2, sort_keys=false) }}

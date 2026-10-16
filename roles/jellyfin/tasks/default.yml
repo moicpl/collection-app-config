@@ -1,0 +1,45 @@
+---
+- name: default.yml | Check that erasing Jellyfin's state is allowed
+  ansible.builtin.assert:
+    that:
+      - jellyfin_wipe | bool
+    fail_msg: >-
+      default erases Jellyfin's config and database (users, libraries, watch history,
+      settings) on {{ inventory_hostname }}, not the media files: pass -e app_wipe=true.
+    quiet: true
+
+- name: default.yml | Stop Jellyfin
+  ansible.builtin.systemd_service:
+    name: "podman-{{ jellyfin_container }}.service"
+    state: stopped
+
+- name: default.yml | Snapshot the current state
+  ansible.builtin.include_tasks: snapshot.yml
+
+- name: default.yml | Erase the state
+  ansible.builtin.file:
+    path: "{{ jellyfin_config_dir }}"
+    state: absent
+
+# The container gives it to its own user (PUID) at start
+- name: default.yml | Recreate the config directory
+  ansible.builtin.file:
+    path: "{{ jellyfin_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: default.yml | Start Jellyfin
+  ansible.builtin.systemd_service:
+    name: "podman-{{ jellyfin_container }}.service"
+    state: started
+
+- name: default.yml | Connect to Jellyfin
+  ansible.builtin.include_tasks: api.yml
+
+- name: default.yml | Create the admin user
+  ansible.builtin.include_tasks: wizard.yml
+
+- name: default.yml | Check the admin login
+  ansible.builtin.include_tasks: login.yml

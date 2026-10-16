@@ -1,0 +1,51 @@
+---
+- name: admin.yml | Read the admin user
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['user:info', nextcloud_admin_username, '--output=json'] }}"
+  register: nextcloud_admin_info
+  changed_when: false
+  failed_when: nextcloud_admin_info.rc not in [0, 1]
+  check_mode: false
+
+- name: admin.yml | Create the admin user
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ_pass + ['user:add', '--password-from-env', '--group=admin', nextcloud_admin_username] }}"
+  environment:
+    OC_PASS: "{{ nextcloud_admin_password }}"
+  changed_when: true
+  when: nextcloud_admin_info.rc != 0
+  no_log: true
+
+# Nextcloud keeps only a hash of the password: a login attempt tells whether
+# it is the one wanted. By a name Nextcloud trusts, not 127.0.0.1.
+- name: admin.yml | Try the login
+  ansible.builtin.uri:
+    url: "{{ nextcloud_url }}/ocs/v2.php/cloud/user?format=json"
+    headers:
+      Host: "{{ nextcloud_trusted_domains | first }}"
+      OCS-APIRequest: "true"
+    url_username: "{{ nextcloud_admin_username }}"
+    url_password: "{{ nextcloud_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 401]
+  register: nextcloud_login
+  when: nextcloud_admin_info.rc == 0
+  check_mode: false
+  no_log: true
+
+- name: admin.yml | Set the admin password
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ_pass + ['user:resetpassword', '--password-from-env', nextcloud_admin_username] }}"
+  environment:
+    OC_PASS: "{{ nextcloud_admin_password }}"
+  changed_when: true
+  when: nextcloud_admin_info.rc == 0 and nextcloud_login.status == 401
+  no_log: true
+
+- name: admin.yml | Put the admin user in the admin group
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['group:adduser', 'admin', nextcloud_admin_username] }}"
+  changed_when: true
+  when: >-
+    nextcloud_admin_info.rc == 0
+    and 'admin' not in (nextcloud_admin_info.stdout | regex_replace('^[^{]*', '') | from_json).groups

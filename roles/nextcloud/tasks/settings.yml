@@ -1,0 +1,22 @@
+---
+# Without --private: passwords and secrets come masked
+- name: settings.yml | Read the settings and the apps
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + item }}"
+  loop:
+    - ["config:list", "--output=json"]
+    - ["app:list", "--output=json"]
+    - ["app:list", "--shipped=false", "--output=json"]
+  loop_control:
+    label: "{{ item | join(' ') }}"
+  register: nextcloud_lists
+  changed_when: false
+  check_mode: false
+
+- name: settings.yml | Index the settings and the apps
+  ansible.builtin.set_fact:
+    nextcloud_config_live: "{{ outputs[0] | from_json }}"
+    nextcloud_apps_live: "{{ outputs[1] | from_json }}"
+    nextcloud_apps_extra: "{{ outputs[2] | from_json }}"
+  vars:
+    outputs: "{{ nextcloud_lists.results | map(attribute='stdout') | map('regex_replace', '^[^{]*', '') }}"

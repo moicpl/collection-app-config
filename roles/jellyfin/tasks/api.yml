@@ -1,0 +1,11 @@
+---
+# Jellyfin answers once started; StartupWizardCompleted tells whether it has
+# its admin user
+- name: api.yml | Wait for Jellyfin
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/System/Info/Public"
+  register: jellyfin_public_info
+  until: jellyfin_public_info.status == 200
+  retries: 30
+  delay: 5
+  check_mode: false

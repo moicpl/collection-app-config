@@ -1,0 +1,21 @@
+---
+# Immich's state on a host whose containers come from arr_nix.yml:
+# immich_action picks tasks/<action>.yml.
+- name: main.yml | Manage Immich's state
+  become: true
+  block:
+    - name: main.yml | Check that the Immich container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ immich_container }}.service"
+      register: immich_unit
+      changed_when: false
+      check_mode: false
+      failed_when: immich_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ immich_action }} action
+      ansible.builtin.include_tasks: "{{ immich_action }}.yml"

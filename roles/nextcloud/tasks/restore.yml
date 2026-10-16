@@ -1,0 +1,73 @@
+---
+# A new, empty Nextcloud (container started, code copied, not installed)
+# takes back the database and config.php saved by backup; the users' files are
+# on /data. Decrypted in memory on the controller, sent through stdin.
+
+# Nextcloud's own database user (oc_<admin>), which owns its tables
+- name: restore.yml | Restore the database's roles
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - --interactive
+      - "{{ nextcloud_db_container }}"
+      - psql
+      - --quiet
+      - --username={{ nextcloud_db_user }}
+      - --dbname=postgres
+    stdin: "{{ lookup('community.sops.sops', nextcloud_store_dir ~ '/roles.sql.sops', **nextcloud_sops_read) }}"
+  changed_when: true
+  no_log: true
+
+# The dump recreates the database (--create --clean)
+- name: restore.yml | Restore the database
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - --interactive
+      - "{{ nextcloud_db_container }}"
+      - bash
+      - -o
+      - pipefail
+      - -c
+      - base64 -d | gunzip | psql --quiet --set=ON_ERROR_STOP=1 --username={{ nextcloud_db_user }} --dbname=postgres
+    stdin: "{{ lookup('community.sops.sops', nextcloud_store_dir ~ '/database.sql.gz.sops', base64=true, **nextcloud_sops_read) }}"
+  changed_when: true
+  no_log: true
+
+- name: restore.yml | Restore config.php
+  ansible.builtin.copy:
+    content: "{{ lookup('community.sops.sops', nextcloud_store_dir ~ '/config.php.sops', **nextcloud_sops_read) }}"
+    dest: "{{ nextcloud_html_dir }}/config/config.php"
+    owner: "{{ nextcloud_data_owner }}"
+    group: "{{ nextcloud_data_owner }}"
+    mode: "0640"
+  no_log: true
+
+- name: restore.yml | Read Nextcloud's status
+  ansible.builtin.include_tasks: status.yml
+
+# The image may be newer than the saved database
+- name: restore.yml | Upgrade the database
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['upgrade'] }}"
+  changed_when: true
+  when: nextcloud_status.needsDbUpgrade
+
+# The files on /data may have changed since the backup: Nextcloud rescans
+# them, and its clients sync again
+- name: restore.yml | Rescan the users' files
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['files:scan', '--all'] }}"
+  async: 7200
+  poll: 15
+  changed_when: true
+
+- name: restore.yml | Tell the clients to sync again
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['maintenance:data-fingerprint'] }}"
+  changed_when: true
+
+- name: restore.yml | Read Nextcloud's status after the restore
+  ansible.builtin.include_tasks: status.yml

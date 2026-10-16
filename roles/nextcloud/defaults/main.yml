@@ -1,0 +1,78 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  on the first start, restore the database saved by backup, or
+#              else install Nextcloud; keep the admin user's password, set the
+#              settings that differ, install, enable and disable the apps
+#   backup     save the database and config.php in nextcloud_store_dir,
+#              encrypted with sops, and the live settings (nextcloud.yml, in the
+#              format of the variables below), and show how they differ from
+#              the variables (changes made in Nextcloud's UI)
+#   default    erase Nextcloud's config and database, set its data directory
+#              (the users' files) aside, start it empty with the admin user only
+nextcloud_action: ""
+# default erases data: the run stops unless this is true
+nextcloud_wipe: false
+
+# Admin user, created at the install; its password is set back when it
+# doesn't log in
+nextcloud_admin_username: admin
+# Secrets, read by the playbook from Bitwarden: the admin's password, and the
+# database's (arr_nix.yml gives it to the PostgreSQL container)
+nextcloud_admin_password: ""
+nextcloud_db_password: ""
+
+# Names Nextcloud answers to, and its URL in links it makes outside a request
+# (emails, background jobs). Always set.
+nextcloud_trusted_domains: >-
+  {{ [inventory_hostname, inventory_hostname_short]
+     + ([ansible_host] if ansible_host | default(inventory_hostname) != inventory_hostname else []) }}
+nextcloud_cli_url: "http://{{ inventory_hostname }}:{{ nextcloud_port }}"
+
+# Settings, set when they differ, others left alone:
+# config.php's (https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/config_sample_php_parameters.html)
+#   nextcloud_system_config:
+#     default_phone_region: CA
+#     maintenance_window_start: 1
+nextcloud_system_config: {}
+# Apps' settings: app -> key -> value (stored as text); background jobs by the
+# cron container (core.backgroundjobs_mode: cron) are always set
+#   nextcloud_app_config:
+#     files:
+#       default_quota: 50 GB
+nextcloud_app_config: {}
+# Apps enabled (installed from the app store when missing) and disabled
+nextcloud_apps_enabled: []
+nextcloud_apps_disabled: []
+
+# App state store on the controller: this host's nextcloud directory, the age
+# public key its files are encrypted to, and the private key (secret, read by
+# the playbook from Bitwarden) to read them
+nextcloud_store_dir: ""
+nextcloud_age_recipient: ""
+nextcloud_age_key: ""
+# On the first start, restore the database saved in the store when there is
+# one, instead of installing an empty Nextcloud
+nextcloud_restore: true
+
+# Containers, database and host paths, as set up by arr_nix.yml
+nextcloud_container: nextcloud
+nextcloud_containers:
+  - nextcloud-redis
+  - nextcloud-postgres
+  - nextcloud
+  - nextcloud-cron
+nextcloud_port: 8080
+nextcloud_url: "http://127.0.0.1:{{ nextcloud_port }}"
+nextcloud_db_host: nextcloud-postgres
+nextcloud_db_container: nextcloud-postgres
+nextcloud_db_name: nextcloud
+nextcloud_db_user: nextcloud
+nextcloud_html_dir: /var/lib/nextcloud/html     # /var/www/html: code, config, apps
+nextcloud_db_dir: /var/lib/nextcloud/postgres   # PostgreSQL's data
+nextcloud_data_dir: /data/nextcloud             # /var/www/html/data: users' files
+# www-data in the image
+nextcloud_data_owner: "33"
+# Copies of the config and database taken on the host before default erases
+# them; the last nextcloud_snapshot_keep are kept
+nextcloud_snapshot_dir: /var/lib/appstate/nextcloud/snapshots
+nextcloud_snapshot_keep: 3

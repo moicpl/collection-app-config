@@ -1,0 +1,32 @@
+---
+# Immich keeps only a hash of the password: a login that fails can't be
+# repaired through the API
+- name: login.yml | Log in as the admin user
+  ansible.builtin.uri:
+    url: "{{ immich_url }}/api/auth/login"
+    method: POST
+    body_format: json
+    body:
+      email: "{{ immich_admin_email }}"
+      password: "{{ immich_admin_password }}"
+    status_code: [201, 401]
+  register: immich_login
+  check_mode: false
+  no_log: true
+
+- name: login.yml | Check the login
+  ansible.builtin.assert:
+    that:
+      - immich_login.status == 201
+      - immich_login.json.isAdmin
+    fail_msg: >-
+      {{ immich_admin_email }} can't log in to Immich on {{ inventory_hostname }} with
+      immich_admin_password from Bitwarden, or isn't an administrator. Reset it on the host
+      (sudo podman exec -it {{ immich_container }} immich-admin reset-admin-password), then set
+      the one from Bitwarden in Immich's UI (Account settings > Password).
+    quiet: true
+
+- name: login.yml | Use the session token
+  ansible.builtin.set_fact:
+    immich_token: "{{ immich_login.json.accessToken }}"
+  no_log: true

@@ -1,0 +1,59 @@
+---
+# Lidarr keeps only a hash of the password: a login attempt tells whether it
+# is the one wanted. A failed login is redirected with loginFailed.
+- name: auth.yml | Try the login
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/login?returnUrl=%2F"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ lidarr_admin_username }}"
+      password: "{{ lidarr_admin_password }}"
+    follow_redirects: none
+    status_code: 302
+  register: lidarr_login
+  check_mode: false
+  no_log: true
+
+- name: auth.yml | Read the security settings
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/config/host"
+    headers: "{{ lidarr_api_headers }}"
+  register: lidarr_host_config
+  check_mode: false
+
+- name: auth.yml | Set the login
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/config/host/{{ lidarr_host_config.json.id }}"
+    method: PUT
+    headers: "{{ lidarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ lidarr_host_config.json | combine({
+           'authenticationMethod': 'forms',
+           'authenticationRequired': lidarr_authentication_required,
+           'username': lidarr_admin_username,
+           'password': lidarr_admin_password,
+           'passwordConfirmation': lidarr_admin_password}) }}
+    status_code: [200, 202]
+  changed_when: true
+  when: >-
+    'loginFailed' in lidarr_login.location | default('loginFailed')
+    or lidarr_host_config.json.authenticationMethod != 'forms'
+    or lidarr_host_config.json.authenticationRequired != lidarr_authentication_required
+    or lidarr_host_config.json.username != lidarr_admin_username
+  notify: Restart Lidarr
+  no_log: true
+
+# The new login takes effect at the restart
+- name: auth.yml | Restart Lidarr for the new login
+  ansible.builtin.meta: flush_handlers
+
+- name: auth.yml | Wait for Lidarr
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/ping"
+  register: lidarr_ping
+  until: lidarr_ping.status == 200
+  retries: 30
+  delay: 5
+  check_mode: false

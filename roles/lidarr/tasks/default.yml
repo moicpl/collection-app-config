@@ -1,0 +1,43 @@
+---
+- name: default.yml | Check that erasing Lidarr's state is allowed
+  ansible.builtin.assert:
+    that:
+      - lidarr_wipe | bool
+    fail_msg: >-
+      default erases Lidarr's config and database (artists, settings, history) on
+      {{ inventory_hostname }}, not the media files: pass -e app_wipe=true.
+    quiet: true
+
+- name: default.yml | Stop Lidarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ lidarr_container }}.service"
+    state: stopped
+
+- name: default.yml | Snapshot the current state
+  ansible.builtin.include_tasks: snapshot.yml
+
+- name: default.yml | Erase the state
+  ansible.builtin.file:
+    path: "{{ lidarr_config_dir }}"
+    state: absent
+
+# The container gives it to its own user (PUID) at start
+- name: default.yml | Recreate the config directory
+  ansible.builtin.file:
+    path: "{{ lidarr_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Lidarr creates a new database, config.xml and API key
+- name: default.yml | Start Lidarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ lidarr_container }}.service"
+    state: started
+
+- name: default.yml | Connect to Lidarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: default.yml | Set the login
+  ansible.builtin.include_tasks: auth.yml

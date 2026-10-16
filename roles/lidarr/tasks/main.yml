@@ -1,0 +1,21 @@
+---
+# Lidarr's state on a host whose container comes from arr_nix.yml:
+# lidarr_action picks tasks/<action>.yml.
+- name: main.yml | Manage Lidarr's state
+  become: true
+  block:
+    - name: main.yml | Check that the Lidarr container is set up
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=LoadState
+          - --value
+          - "podman-{{ lidarr_container }}.service"
+      register: lidarr_unit
+      changed_when: false
+      check_mode: false
+      failed_when: lidarr_unit.stdout | trim != 'loaded'
+
+    - name: main.yml | Run the {{ lidarr_action }} action
+      ansible.builtin.include_tasks: "{{ lidarr_action }}.yml"

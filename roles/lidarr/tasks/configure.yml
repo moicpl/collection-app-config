@@ -1,0 +1,189 @@
+---
+- name: configure.yml | Connect to Lidarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: configure.yml | Set the login
+  ansible.builtin.include_tasks: auth.yml
+
+- name: configure.yml | Read the profiles, root folders and artists
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/{{ item }}"
+    headers: "{{ lidarr_api_headers }}"
+  loop:
+    - qualityprofile
+    - metadataprofile
+    - rootfolder
+    - artist
+  register: lidarr_lists
+  check_mode: false
+
+- name: configure.yml | Index the profiles and artists
+  ansible.builtin.set_fact:
+    lidarr_profile_ids: "{{ dict(lidarr_lists.results[0].json | map(attribute='name') | zip(lidarr_lists.results[0].json | map(attribute='id'))) }}"
+    lidarr_metadata_profile_ids: "{{ dict(lidarr_lists.results[1].json | map(attribute='name') | zip(lidarr_lists.results[1].json | map(attribute='id'))) }}"
+    lidarr_artists_live: "{{ dict(lidarr_lists.results[3].json | map(attribute='foreignArtistId') | zip(lidarr_lists.results[3].json)) }}"
+
+- name: configure.yml | Check the profiles
+  ansible.builtin.assert:
+    that:
+      - ([lidarr_quality_profile] + lidarr_artists_desired | map(attribute='quality_profile')) | difference(lidarr_profile_ids.keys()) | length == 0
+      - ([lidarr_metadata_profile] + lidarr_artists_desired | map(attribute='metadata_profile')) | difference(lidarr_metadata_profile_ids.keys()) | length == 0
+    fail_msg: >-
+      Unknown profile. Lidarr has the quality profiles {{ lidarr_profile_ids.keys() | join(', ') }}
+      and the metadata profiles {{ lidarr_metadata_profile_ids.keys() | join(', ') }}.
+    quiet: true
+
+# Lidarr checks that the folder exists in the container. Each root folder
+# has default profiles, for the artists added from it (e.g. by an import).
+- name: configure.yml | Add the missing root folders
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/rootfolder"
+    method: POST
+    headers: "{{ lidarr_api_headers }}"
+    body_format: json
+    body:
+      name: "{{ item | basename }}"
+      path: "{{ item }}"
+      defaultQualityProfileId: "{{ lidarr_profile_ids[lidarr_quality_profile] }}"
+      defaultMetadataProfileId: "{{ lidarr_metadata_profile_ids[lidarr_metadata_profile] }}"
+      defaultMonitorOption: "{{ lidarr_artist_monitor }}"
+      defaultNewItemMonitorOption: all
+      defaultTags: []
+    status_code: 201
+  changed_when: true
+  loop: "{{ lidarr_root_folders | difference(lidarr_lists.results[2].json | map(attribute='path') | map('regex_replace', '/$', '')) }}"
+
+# Lidarr adds an artist from its lookup result (MusicBrainz metadata)
+- name: configure.yml | Look up the artists to add
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/artist/lookup?term=lidarr:{{ item.mbid }}"
+    headers: "{{ lidarr_api_headers }}"
+  loop: "{{ lidarr_artists_desired | rejectattr('mbid', 'in', lidarr_artists_live.keys()) }}"
+  loop_control:
+    label: "{{ item.mbid }} {{ item.name }}"
+  register: lidarr_lookups
+  failed_when: lidarr_lookups.json | default([]) | selectattr('foreignArtistId', 'equalto', item.mbid) | list | length == 0
+  check_mode: false
+
+- name: configure.yml | Add the missing artists
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/artist"
+    method: POST
+    headers: "{{ lidarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ found | combine({
+           'qualityProfileId': lidarr_profile_ids[item.item.quality_profile],
+           'metadataProfileId': lidarr_metadata_profile_ids[item.item.metadata_profile],
+           'rootFolderPath': item.item.root_folder,
+           'monitored': item.item.monitored,
+           'monitorNewItems': 'all',
+           'addOptions': {
+             'monitor': artist.monitor | default(lidarr_artist_monitor),
+             'searchForMissingAlbums': artist.search | default(lidarr_artist_search) | bool}}) }}
+    status_code: 201
+  changed_when: true
+  loop: "{{ lidarr_lookups.results }}"
+  loop_control:
+    label: "{{ found.artistName }}"
+  vars:
+    found: "{{ item.json | selectattr('foreignArtistId', 'equalto', item.item.mbid) | first }}"
+    artist: "{{ lidarr_artists | selectattr('mbid', 'equalto', item.item.mbid) | first }}"
+
+- name: configure.yml | Update the listed artists that differ
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/artist/{{ live.id }}"
+    method: PUT
+    headers: "{{ lidarr_api_headers }}"
+    body_format: json
+    body: "{{ live | combine(wanted) }}"
+    status_code: [200, 202]
+  changed_when: true
+  loop: "{{ lidarr_artists_desired | selectattr('mbid', 'in', lidarr_artists_live.keys()) }}"
+  loop_control:
+    label: "{{ item.mbid }} {{ live.artistName }}"
+  vars:
+    live: "{{ lidarr_artists_live[item.mbid] }}"
+    wanted:
+      qualityProfileId: "{{ lidarr_profile_ids[item.quality_profile] }}"
+      metadataProfileId: "{{ lidarr_metadata_profile_ids[item.metadata_profile] }}"
+      monitored: "{{ item.monitored }}"
+  when: >-
+    live.qualityProfileId != wanted.qualityProfileId or live.metadataProfileId != wanted.metadataProfileId
+    or live.monitored != wanted.monitored
+
+- name: configure.yml | Read the download clients and their templates
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/{{ item }}"
+    headers: "{{ lidarr_api_headers }}"
+  loop:
+    - downloadclient
+    - downloadclient/schema
+  register: lidarr_download_client_lists
+  check_mode: false
+
+- name: configure.yml | Index the download clients and their templates
+  ansible.builtin.set_fact:
+    lidarr_download_clients_api: "{{ lidarr_download_client_lists.results[0].json }}"
+    lidarr_download_client_schema: "{{ lidarr_download_client_lists.results[1].json }}"
+
+- name: configure.yml | Check the download clients
+  ansible.builtin.assert:
+    that:
+      - item.implementation in lidarr_download_client_schema | map(attribute='implementation')
+      - >-
+        item.fields | default({}) | list
+        | difference(lidarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation)
+                     | map(attribute='fields') | flatten | map(attribute='name'))
+        | length == 0
+    fail_msg: >-
+      Download client {{ item.name }}: unknown implementation or field. Lidarr has
+      {{ lidarr_download_client_schema | map(attribute='implementation') | join(', ') }};
+      fields of {{ item.implementation }}:
+      {{ lidarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation)
+         | map(attribute='fields') | flatten | map(attribute='name') | join(', ') }}.
+    quiet: true
+  loop: "{{ lidarr_download_clients }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Lidarr tests the connection before it saves. The fields not listed go back
+# to their defaults, except the passwords, kept as they are.
+- name: configure.yml | Add or update the download clients that differ
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/downloadclient{{ ('/' ~ live.id) if live else '' }}"
+    method: "{{ 'PUT' if live else 'POST' }}"
+    headers: "{{ lidarr_api_headers }}"
+    body_format: json
+    body: >-
+      {{ base | combine({'name': item.name, 'enable': item.enable, 'priority': item.priority,
+                         'fields': fields_json | from_json}) }}
+    status_code: [200, 201, 202]
+  changed_when: true
+  loop: "{{ lidarr_download_clients_desired }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    live: "{{ lidarr_download_clients_api | selectattr('name', 'equalto', item.name) | first | default({}) }}"
+    base: "{{ live or (lidarr_download_client_schema | selectattr('implementation', 'equalto', item.implementation) | first) }}"
+    fields_json: >-
+      [{% for field in base.fields %}
+      {{ field | combine({'value': item.fields[field.name] if field.name in item.fields
+                                   else field.value | default(none) if field.type == 'password' else none}) | to_json }}{{ '' if loop.last else ',' }}
+      {% endfor %}]
+  when: lidarr_download_clients_state | selectattr('name', 'equalto', item.name) | list != [item]
+
+- name: configure.yml | Report the artists not in the inventory
+  ansible.builtin.debug:
+    msg: >-
+      In Lidarr but not in the inventory, left alone:
+      {{ lidarr_artists_live.values() | rejectattr('foreignArtistId', 'in', lidarr_artists_desired | map(attribute='mbid'))
+         | map(attribute='artistName') | join(', ') }}
+  when: lidarr_artists_live.keys() | difference(lidarr_artists_desired | map(attribute='mbid')) | length > 0
+
+- name: configure.yml | Report the download clients not in the inventory
+  ansible.builtin.debug:
+    msg: >-
+      In Lidarr but not in the inventory, left alone:
+      {{ lidarr_download_clients_api | map(attribute='name') | difference(lidarr_download_clients | map(attribute='name')) | join(', ') }}
+  when: lidarr_download_clients_api | map(attribute='name') | difference(lidarr_download_clients | map(attribute='name')) | length > 0

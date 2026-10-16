@@ -1,0 +1,54 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  create the admin user on the first start, add the missing
+#              libraries and library paths, set the server and transcoding
+#              settings that differ
+#   backup     save the live settings in jellyfin_store_dir (jellyfin.yml, in
+#              the format of the variables below) and show how they differ from
+#              the variables (changes made in Jellyfin's UI)
+#   default    erase Jellyfin's config and database (not the media), start it
+#              empty with the admin user only
+jellyfin_action: ""
+# default erases data: the run stops unless this is true
+jellyfin_wipe: false
+
+# Admin user, created by the first start wizard. Jellyfin changes a password
+# only given the current one: configure stops when this one doesn't log in.
+jellyfin_admin_username: admin
+# Secret, read by the playbook from Bitwarden
+jellyfin_admin_password: ""
+
+# Libraries, by name: added when missing, with their paths as seen in the
+# container; a listed path missing from a library is added. Libraries and
+# paths in Jellyfin that aren't listed are left alone (configure reports them).
+#   - name: Movies
+#     type: movies        # movies, tvshows, music, musicvideos, homevideos, boxsets, books, mixed
+#     paths:
+#       - /data/media/movies
+jellyfin_libraries: []
+
+# Settings, by their API name: set when they differ, others left alone.
+# Server settings (Dashboard > General, Playback...): /System/Configuration,
+# e.g. ServerName, UICulture, MetadataCountryCode, PreferredMetadataLanguage.
+jellyfin_server_config: {}
+# Transcoding settings (Dashboard > Playback > Transcoding):
+# /System/Configuration/encoding, e.g. HardwareAccelerationType: vaapi
+jellyfin_encoding_config: {}
+
+# First start wizard: language and metadata country
+jellyfin_ui_culture: en-US
+jellyfin_metadata_country: US
+jellyfin_metadata_language: en
+
+# App state store on the controller: this host's jellyfin directory
+jellyfin_store_dir: ""
+
+# Container and host paths, as set up by arr_nix.yml
+jellyfin_container: jellyfin
+jellyfin_port: 8096
+jellyfin_url: "http://127.0.0.1:{{ jellyfin_port }}"
+jellyfin_config_dir: /var/lib/jellyfin          # /config
+# Copies of the state taken on the host before default erases it; the last
+# jellyfin_snapshot_keep are kept
+jellyfin_snapshot_dir: /var/lib/appstate/jellyfin/snapshots
+jellyfin_snapshot_keep: 3

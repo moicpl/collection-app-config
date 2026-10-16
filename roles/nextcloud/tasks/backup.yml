@@ -1,0 +1,159 @@
+---
+- name: backup.yml | Connect to Nextcloud
+  ansible.builtin.include_tasks: status.yml
+
+- name: backup.yml | Check that Nextcloud is installed
+  ansible.builtin.assert:
+    that:
+      - nextcloud_status.installed
+    fail_msg: "Nextcloud on {{ inventory_hostname }} isn't installed yet: run app_action=configure."
+    quiet: true
+
+- name: backup.yml | Read the settings
+  ansible.builtin.include_tasks: settings.yml
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ nextcloud_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# What can't be code: users, shares, calendars, contacts... in the database.
+# A consistent snapshot without stopping Nextcloud. --create --clean: the
+# dump recreates the database, its owner and settings included. Gzipped (-n:
+# the same data gives the same file) and base64-encoded to go through stdout.
+- name: backup.yml | Dump the database
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ nextcloud_db_container }}"
+      - bash
+      - -o
+      - pipefail
+      - -c
+      - >-
+        pg_dump --create --clean --if-exists --username={{ nextcloud_db_user }} {{ nextcloud_db_name }}
+        | gzip -n | base64 -w0
+  register: nextcloud_db_dump
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+# pg_dump leaves the roles out: Nextcloud's own (oc_<admin>), with its
+# password, is needed to restore. Not the container's user, which the
+# container creates, nor the random \restrict lines, which would change the
+# file at each run.
+- name: backup.yml | Dump the database's roles
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ nextcloud_db_container }}"
+      - pg_dumpall
+      - --roles-only
+      - --username={{ nextcloud_db_user }}
+  register: nextcloud_roles_dump
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+# Instance secrets and Nextcloud's database login, which go with the database
+- name: backup.yml | Read config.php
+  ansible.builtin.slurp:
+    src: "{{ nextcloud_html_dir }}/config/config.php"
+  register: nextcloud_config_php
+  no_log: true
+
+# Rewritten only when the content changed
+- name: backup.yml | Save the database and config.php in the store, encrypted
+  community.sops.sops_encrypt:
+    path: "{{ nextcloud_store_dir }}/{{ item.name }}"
+    content_binary: "{{ item.content }}"
+    age:
+      - "{{ nextcloud_age_recipient }}"
+    age_key: "{{ nextcloud_age_key }}"
+    mode: "0644"
+  loop:
+    - name: database.sql.gz.sops
+      content: "{{ nextcloud_db_dump.stdout }}"
+    - name: roles.sql.sops
+      content: >-
+        {{ (nextcloud_roles_dump.stdout_lines
+            | reject('match', '^(CREATE|ALTER) ROLE ' ~ nextcloud_db_user ~ '[ ;]')
+            | reject('match', '^.(un)?restrict ')
+            | join(newline) ~ newline) | b64encode }}
+    - name: config.php.sops
+      content: "{{ nextcloud_config_php.content }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    newline: "\n"
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+# Same format as the variables, so the file can be compared with them, or
+# copied into the inventory: the live values of the settings listed there, the
+# state of the apps listed there, and the app store apps enabled. Plain text:
+# no secrets in it (config:list masks them).
+- name: backup.yml | Save the live settings in the store
+  ansible.builtin.template:
+    src: nextcloud.yml.j2
+    dest: "{{ nextcloud_store_dir }}/nextcloud.yml"
+    mode: "0644"
+  vars:
+    listed_apps: "{{ nextcloud_apps_enabled + nextcloud_apps_disabled }}"
+    live_enabled: "{{ nextcloud_apps_live.enabled.keys() | list }}"
+    app_config_json: >-
+      {% set apps = {} %}
+      {% for app, settings in nextcloud_app_config.items() %}
+      {%   set _ = apps.update({app: dict(settings.keys() | sort | zip(settings.keys() | sort
+               | map('extract', nextcloud_config_live.apps[app] | default({})) | map('default', none)))}) %}
+      {% endfor %}
+      {{ apps | to_json }}
+    nextcloud_state:
+      nextcloud_system_config: >-
+        {{ dict(nextcloud_system_config.keys() | sort
+                | zip(nextcloud_system_config.keys() | sort | map('extract', nextcloud_config_live.system) | map('default', none))) }}
+      nextcloud_app_config: "{{ app_config_json | from_json }}"
+      nextcloud_apps_enabled: "{{ (live_enabled | intersect(listed_apps) + nextcloud_apps_extra.enabled.keys() | list) | unique | sort }}"
+      nextcloud_apps_disabled: "{{ listed_apps | difference(live_enabled) | sort }}"
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Nextcloud's UI, to
+# port to the inventory first
+- name: backup.yml | Compare the live settings with the inventory
+  ansible.builtin.template:
+    src: nextcloud.yml.j2
+    dest: "{{ nextcloud_store_dir }}/nextcloud.yml"
+    mode: "0644"
+  vars:
+    app_config_json: >-
+      {% set apps = {} %}
+      {% for app, settings in nextcloud_app_config | dictsort %}
+      {%   set _ = apps.update({app: dict(settings | dictsort | map('first') | zip(settings | dictsort | map('last') | map('string')))}) %}
+      {% endfor %}
+      {{ apps | to_json }}
+    nextcloud_state:
+      nextcloud_system_config: "{{ dict(nextcloud_system_config | dictsort) }}"
+      nextcloud_app_config: "{{ app_config_json | from_json }}"
+      nextcloud_apps_enabled: "{{ nextcloud_apps_enabled | unique | sort }}"
+      nextcloud_apps_disabled: "{{ nextcloud_apps_disabled | unique | sort }}"
+  check_mode: true
+  diff: true
+  register: nextcloud_drift
+  delegate_to: localhost
+  become: false
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      Nextcloud's settings differ from the inventory (diff above: - live, + inventory).
+      Move the changes to inventory/group_vars/nixos_arr/nextcloud.yml: the next
+      configure run reverts the listed settings and apps (app store apps enabled
+      in the UI and not listed stay enabled).
+  when: nextcloud_drift is changed

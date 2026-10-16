@@ -1,0 +1,76 @@
+---
+# Radarr's state on the [nixos_arr] machines, as code: the login, root folders
+# and movies come from inventory/group_vars/nixos_arr/radarr.yml. Run from
+# nixos_playbooks/, after arr_nix.yml:
+#   ansible-playbook config/radarr.yml -e app_action=<action>
+#
+#   configure  set the login, add the missing root folders and movies, put back
+#              the settings of the listed movies, set the download clients
+#   backup     save the live settings in the app state store (appstate/,
+#              radarr.yml, same format as the inventory) and show their
+#              differences from the inventory, i.e. changes made in Radarr's UI
+#   default    erase Radarr's config and database (not the media) and start it
+#              empty, with the login only; needs -e app_wipe=true
+#
+# Secrets in Bitwarden: radarr_admin_password, generated on the first run.
+
+- name: Manage Radarr's state
+  hosts: nixos_arr
+  gather_facts: false
+
+  vars:
+    nixos_ssh_private_key: "{{ bitwarden_secrets[ssh_key_name ~ '_private_key'] }}"
+
+  pre_tasks:
+    - name: radarr.yml | Check the action
+      ansible.builtin.assert:
+        that:
+          - app_action | default('') in ['default', 'configure', 'backup']
+        fail_msg: "Pass -e app_action=default|configure|backup."
+        quiet: true
+      tags: always
+
+    - name: radarr.yml | Create the login password in Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: put
+        bitwarden_secret_name: radarr_admin_password
+        bitwarden_secret_content: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=24) }}"
+        bitwarden_secret_note: "Radarr login ({{ radarr_admin_username }}) on [nixos_arr], created by moicpl.app_config.radarr"
+        bitwarden_secret_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/radarr.yml"
+      when: radarr_admin_password_bws_id is not defined
+      tags: always
+
+    - name: radarr.yml | Get the secrets from Bitwarden
+      ansible.builtin.include_role:
+        name: bitwarden
+        apply:
+          tags: always
+      vars:
+        bitwarden_action: get
+        bitwarden_secret_name: "{{ item }}"
+      loop:
+        - "{{ ssh_key_name }}_private_key"
+        - radarr_admin_password
+      tags: always
+
+    - name: radarr.yml | Connect to the host
+      ansible.builtin.include_role:
+        name: moicpl.nixos.nixos
+        tasks_from: connect.yml
+        apply:
+          tags: always
+      tags: always
+
+  tasks:
+    - name: radarr.yml | Manage Radarr's state
+      ansible.builtin.include_role:
+        name: moicpl.app_config.radarr
+      vars:
+        radarr_action: "{{ app_action }}"
+        radarr_wipe: "{{ app_wipe | default(false) | bool }}"
+        radarr_admin_password: "{{ bitwarden_secrets.radarr_admin_password }}"
+        radarr_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/radarr"

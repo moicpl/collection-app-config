@@ -1,0 +1,70 @@
+---
+# What the run does (meta/argument_specs.yml), passed by the playbook:
+#   configure  set the login, add the missing root folders and movies, update
+#              the settings of the listed movies, add or update the download
+#              clients
+#   backup     save the live settings in radarr_store_dir (radarr.yml, in the
+#              format of the variables below) and show how they differ from
+#              the variables (changes made in Radarr's UI)
+#   default    erase Radarr's config and database, start it empty with the
+#              login only
+radarr_action: ""
+# default erases data: the run stops unless this is true
+radarr_wipe: false
+
+# Login (forms), required everywhere or only from outside the local networks
+# (enabled or disabledForLocalAddresses)
+radarr_admin_username: admin
+# Secret, read by the playbook from Bitwarden
+radarr_admin_password: ""
+radarr_authentication_required: enabled
+
+# Root folders, as seen in the container (added, never removed)
+radarr_root_folders: []
+# Quality profile of the movies that don't name one (Radarr's built-in ones:
+# Any, SD, HD-720p, HD-1080p, Ultra-HD, HD - 720p/1080p)
+radarr_quality_profile: HD-1080p
+# When a movie counts as available to download: announced, inCinemas, released
+radarr_minimum_availability: released
+# Search for the movie when it is added
+radarr_movie_search: false
+
+# Movies, by TMDB ID (https://www.themoviedb.org, or Radarr's search). Added
+# when missing; quality_profile, monitored and minimum_availability are kept in
+# line. Movies in Radarr that aren't listed are left alone (configure reports them).
+#   - title: The Matrix                    # label only
+#     tmdb_id: 603
+#     quality_profile: HD-1080p            # default: radarr_quality_profile
+#     root_folder: /data/media/movies      # when added; default: the first root folder
+#     monitored: true
+#     minimum_availability: released       # default: radarr_minimum_availability
+#     search: false                        # when added; default: radarr_movie_search
+radarr_movies: []
+
+# Download clients, by name: added when missing, kept in line. fields: the
+# client's settings, by their API name (configure lists them on a typo); the
+# others keep Radarr's defaults. Secret fields (passwords) aren't set: they
+# would need Bitwarden. Clients in Radarr that aren't listed are left alone.
+#   - name: Transmission
+#     implementation: Transmission         # Transmission, QBittorrent, Sabnzbd...
+#     enable: true
+#     priority: 1
+#     fields:
+#       host: transmission
+#       port: 9091
+#       urlBase: /transmission/
+#       movieCategory: radarr
+radarr_download_clients: []
+
+# App state store on the controller: this host's radarr directory
+radarr_store_dir: ""
+
+# Container and host paths, as set up by arr_nix.yml
+radarr_container: radarr
+radarr_port: 7878
+radarr_url: "http://127.0.0.1:{{ radarr_port }}"
+radarr_config_dir: /var/lib/radarr              # /config
+# Copies of the state taken on the host before default erases it; the last
+# radarr_snapshot_keep are kept
+radarr_snapshot_dir: /var/lib/appstate/radarr/snapshots
+radarr_snapshot_keep: 3

@@ -1,0 +1,7 @@
+---
+- name: main.yml | Restart Lidarr
+  ansible.builtin.systemd_service:
+    name: "podman-{{ lidarr_container }}.service"
+    state: restarted
+  become: true
+  listen: Restart Lidarr

@@ -1,0 +1,95 @@
+---
+- name: backup.yml | Connect to Lidarr's API
+  ansible.builtin.include_tasks: api.yml
+
+- name: backup.yml | Read the live settings
+  ansible.builtin.uri:
+    url: "{{ lidarr_url }}/api/v1/{{ item }}"
+    headers: "{{ lidarr_api_headers }}"
+  loop:
+    - config/host
+    - rootfolder
+    - qualityprofile
+    - artist
+    - downloadclient
+    - downloadclient/schema
+    - metadataprofile
+  register: lidarr_lists
+  check_mode: false
+
+- name: backup.yml | Index the download clients and their templates
+  ansible.builtin.set_fact:
+    lidarr_download_clients_api: "{{ lidarr_lists.results[4].json }}"
+    lidarr_download_client_schema: "{{ lidarr_lists.results[5].json }}"
+
+# Same format as the variables, so the file can be compared with them, or
+# copied into the inventory
+- name: backup.yml | Gather the live settings
+  ansible.builtin.set_fact:
+    lidarr_state_live:
+      lidarr_admin_username: "{{ host.username }}"
+      lidarr_authentication_required: "{{ host.authenticationRequired }}"
+      lidarr_root_folders: "{{ lidarr_lists.results[1].json | map(attribute='path') | sort }}"
+      lidarr_artists: "{{ artists_json | from_json }}"
+      lidarr_download_clients: "{{ lidarr_download_clients_state }}"
+  vars:
+    # Built as JSON: a template made of several parts gives a string
+    artists_json: >-
+      [{% for artist in lidarr_lists.results[3].json | sort(attribute='foreignArtistId') %}
+      {{ {'name': artist.artistName,
+          'mbid': artist.foreignArtistId,
+          'quality_profile': profiles[artist.qualityProfileId],
+          'metadata_profile': metadata_profiles[artist.metadataProfileId],
+          'root_folder': artist.rootFolderPath | default(artist.path | dirname) | regex_replace('/$', ''),
+          'monitored': artist.monitored} | to_json }}{{ '' if loop.last else ',' }}
+      {% endfor %}]
+    host: "{{ lidarr_lists.results[0].json }}"
+    profiles: "{{ dict(lidarr_lists.results[2].json | map(attribute='id') | zip(lidarr_lists.results[2].json | map(attribute='name'))) }}"
+    metadata_profiles: "{{ dict(lidarr_lists.results[6].json | map(attribute='id') | zip(lidarr_lists.results[6].json | map(attribute='name'))) }}"
+
+- name: backup.yml | Create the store directory
+  ansible.builtin.file:
+    path: "{{ lidarr_store_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# Plain text: no secrets in it
+- name: backup.yml | Save the live settings in the store
+  ansible.builtin.template:
+    src: lidarr.yml.j2
+    dest: "{{ lidarr_store_dir }}/lidarr.yml"
+    mode: "0644"
+  vars:
+    lidarr_state: "{{ lidarr_state_live }}"
+  delegate_to: localhost
+  become: false
+
+# What the next configure run would change: edits made in Lidarr's UI, to
+# port to the inventory first
+- name: backup.yml | Compare the live settings with the inventory
+  ansible.builtin.template:
+    src: lidarr.yml.j2
+    dest: "{{ lidarr_store_dir }}/lidarr.yml"
+    mode: "0644"
+  vars:
+    lidarr_state:
+      lidarr_admin_username: "{{ lidarr_admin_username }}"
+      lidarr_authentication_required: "{{ lidarr_authentication_required }}"
+      lidarr_root_folders: "{{ lidarr_root_folders | sort }}"
+      lidarr_artists: "{{ lidarr_artists_desired }}"
+      lidarr_download_clients: "{{ lidarr_download_clients_desired }}"
+  check_mode: true
+  diff: true
+  register: lidarr_drift
+  delegate_to: localhost
+  become: false
+
+- name: backup.yml | Report the changes made outside the inventory  # noqa: no-handler (a report, not a change)
+  ansible.builtin.debug:
+    msg: >-
+      Lidarr's settings differ from the inventory (diff above: - live, + inventory).
+      Move the changes to inventory/group_vars/nixos_arr/lidarr.yml: the next
+      configure run reverts the artist settings and adds what is missing.
+  when: lidarr_drift is changed

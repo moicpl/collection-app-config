@@ -1,0 +1,5 @@
+---
+# Radarr on {{ inventory_hostname }}, saved by the radarr role (backup), in
+# the format of its variables (inventory/group_vars/<group>/radarr.yml).
+# The password is in Bitwarden (radarr_admin_password).
+{{ radarr_state | to_nice_yaml(indent=2, sort_keys=false) }}

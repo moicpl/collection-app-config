@@ -1,0 +1,48 @@
+---
+- name: default.yml | Check that erasing Immich's state is allowed
+  ansible.builtin.assert:
+    that:
+      - immich_wipe | bool
+    fail_msg: >-
+      default erases Immich's database (users, albums, faces, photo metadata) on
+      {{ inventory_hostname }}. The photo files stay on /data, but the new, empty Immich
+      doesn't know them: pass -e app_wipe=true.
+    quiet: true
+
+- name: default.yml | Stop Immich
+  ansible.builtin.systemd_service:
+    name: "podman-{{ item }}.service"
+    state: stopped
+  loop: "{{ immich_containers }}"
+
+- name: default.yml | Snapshot the current database
+  ansible.builtin.include_tasks: snapshot.yml
+
+- name: default.yml | Erase the database
+  ansible.builtin.file:
+    path: "{{ immich_db_dir }}"
+    state: absent
+
+# PostgreSQL's image gives it to its own user and creates the database at start
+- name: default.yml | Recreate the database directory
+  ansible.builtin.file:
+    path: "{{ immich_db_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: default.yml | Start Immich
+  ansible.builtin.systemd_service:
+    name: "podman-{{ item }}.service"
+    state: started
+  loop: "{{ immich_containers | reverse }}"
+
+- name: default.yml | Connect to Immich
+  ansible.builtin.include_tasks: api.yml
+
+- name: default.yml | Create the admin user
+  ansible.builtin.include_tasks: admin.yml
+
+- name: default.yml | Check the admin login
+  ansible.builtin.include_tasks: login.yml

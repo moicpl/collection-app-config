@@ -1,0 +1,132 @@
+---
+- name: configure.yml | Connect to Jellyfin
+  ansible.builtin.include_tasks: api.yml
+
+- name: configure.yml | Create the admin user
+  ansible.builtin.include_tasks: wizard.yml
+  when: not jellyfin_public_info.json.StartupWizardCompleted | default(false)
+
+- name: configure.yml | Log in
+  ansible.builtin.include_tasks: login.yml
+
+- name: configure.yml | Read the libraries
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Library/VirtualFolders"
+    headers: "{{ jellyfin_api_headers }}"
+  register: jellyfin_virtual_folders_get
+  check_mode: false
+
+- name: configure.yml | Index the libraries
+  ansible.builtin.set_fact:
+    jellyfin_virtual_folders: "{{ jellyfin_virtual_folders_get.json }}"
+    jellyfin_library_names: "{{ jellyfin_virtual_folders_get.json | map(attribute='Name') | list }}"
+
+- name: configure.yml | Check the library types
+  ansible.builtin.assert:
+    that:
+      - item.type in ['movies', 'tvshows', 'music', 'musicvideos', 'homevideos', 'boxsets', 'books', 'mixed']
+    fail_msg: "Library {{ item.name }}: unknown type {{ item.type }}."
+    quiet: true
+  loop: "{{ jellyfin_libraries_desired }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Jellyfin scans each new library
+- name: configure.yml | Add the missing libraries
+  ansible.builtin.uri:
+    url: >-
+      {{ jellyfin_url }}/Library/VirtualFolders?name={{ item.name | urlencode }}&collectionType={{ item.type
+      }}&refreshLibrary=true
+    method: POST
+    headers: "{{ jellyfin_api_headers }}"
+    body_format: json
+    body:
+      LibraryOptions:
+        PathInfos: "{{ path_infos_json | from_json }}"
+    status_code: 204
+  changed_when: true
+  loop: "{{ jellyfin_libraries_desired | rejectattr('name', 'in', jellyfin_library_names) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    path_infos_json: >-
+      [{% for path in item.paths %}{{ {'Path': path} | to_json }}{{ '' if loop.last else ',' }}{% endfor %}]
+
+- name: configure.yml | Add the missing paths of the libraries
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Library/VirtualFolders/Paths?refreshLibrary=true"
+    method: POST
+    headers: "{{ jellyfin_api_headers }}"
+    body_format: json
+    body:
+      Name: "{{ item.0.name }}"
+      PathInfo:
+        Path: "{{ item.1 }}"
+    status_code: 204
+  changed_when: true
+  loop: "{{ jellyfin_libraries_desired | selectattr('name', 'in', jellyfin_library_names) | subelements('paths') }}"
+  loop_control:
+    label: "{{ item.0.name }}: {{ item.1 }}"
+  when: item.1 not in (jellyfin_virtual_folders | selectattr('Name', 'equalto', item.0.name) | first).Locations
+
+- name: configure.yml | Read the settings
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/System/Configuration{{ item }}"
+    headers: "{{ jellyfin_api_headers }}"
+  loop:
+    - ""
+    - /encoding
+  register: jellyfin_configs
+  check_mode: false
+
+- name: configure.yml | Check the settings
+  ansible.builtin.assert:
+    that:
+      - item.0.keys() | difference(item.1.json.keys()) | length == 0
+    fail_msg: >-
+      Unknown setting in /System/Configuration{{ item.1.item }}:
+      {{ item.0.keys() | difference(item.1.json.keys()) | join(', ') }}
+      (Jellyfin has {{ item.1.json.keys() | sort | join(', ') }}).
+    quiet: true
+  loop: "{{ [jellyfin_server_config, jellyfin_encoding_config] | zip(jellyfin_configs.results) }}"
+  loop_control:
+    label: "/System/Configuration{{ item.1.item }}"
+
+- name: configure.yml | Set the settings that differ
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/System/Configuration{{ item.1.item }}"
+    method: POST
+    headers: "{{ jellyfin_api_headers }}"
+    body_format: json
+    body: "{{ item.1.json | combine(item.0) }}"
+    status_code: 204
+  changed_when: true
+  loop: "{{ [jellyfin_server_config, jellyfin_encoding_config] | zip(jellyfin_configs.results) }}"
+  loop_control:
+    label: "/System/Configuration{{ item.1.item }}"
+  when: item.1.json | combine(item.0) != item.1.json
+
+# From the libraries read before this run's additions: those it added aren't
+# reported
+- name: configure.yml | Report the libraries and paths not in the inventory
+  ansible.builtin.debug:
+    msg: "In Jellyfin but not in the inventory, left alone: {{ notes | join(' ') }}"
+  vars:
+    notes: "{{ notes_json | from_json }}"
+    notes_json: >-
+      {% set notes = [] %}
+      {% for library in jellyfin_libraries_state %}
+      {%   set wanted = jellyfin_libraries_desired | selectattr('name', 'equalto', library.name) | first | default(none) %}
+      {%   if wanted is none %}
+      {%     set _ = notes.append('library ' ~ library.name ~ '.') %}
+      {%   else %}
+      {%     if library.paths | difference(wanted.paths) %}
+      {%       set _ = notes.append(library.name ~ ': ' ~ library.paths | difference(wanted.paths) | join(', ') ~ '.') %}
+      {%     endif %}
+      {%     if library.type != wanted.type %}
+      {%       set _ = notes.append(library.name ~ ' is of type ' ~ library.type ~ ', not ' ~ wanted.type ~ " (Jellyfin can't change it).") %}
+      {%     endif %}
+      {%   endif %}
+      {% endfor %}
+      {{ notes | to_json }}
+  when: notes | length > 0

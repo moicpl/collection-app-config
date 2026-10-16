@@ -1,0 +1,6 @@
+---
+# Immich on {{ inventory_hostname }}, saved by the immich role (backup), in the
+# format of its variables (inventory/group_vars/<group>/immich.yml): the
+# settings that differ from Immich's defaults.
+# The password is in Bitwarden (immich_admin_password).
+{{ immich_state | to_nice_yaml(indent=2, sort_keys=false) }}

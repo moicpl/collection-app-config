@@ -1,0 +1,17 @@
+---
+# Immich answers once started and its database is migrated; isInitialized
+# tells whether it has its admin user
+- name: api.yml | Wait for Immich
+  ansible.builtin.uri:
+    url: "{{ immich_url }}/api/server/ping"
+  register: immich_ping
+  until: immich_ping.status == 200
+  retries: 60
+  delay: 5
+  check_mode: false
+
+- name: api.yml | Read whether Immich has its admin user
+  ansible.builtin.uri:
+    url: "{{ immich_url }}/api/server/config"
+  register: immich_server_config
+  check_mode: false

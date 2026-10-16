@@ -1,0 +1,10 @@
+---
+# The listed settings whose live value differs (transmission_session: the
+# arguments of session-get)
+transmission_settings_changes: "{{ transmission_settings_changes_json | from_json }}"
+transmission_settings_changes_json: >-
+  {% set changes = {} %}
+  {% for name, value in transmission_settings.items() if transmission_session[name] | default(none) != value %}
+  {%   set _ = changes.update({name: value}) %}
+  {% endfor %}
+  {{ changes | to_json }}

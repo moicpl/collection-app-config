@@ -1,0 +1,69 @@
+---
+- name: default.yml | Check that erasing Nextcloud's state is allowed
+  ansible.builtin.assert:
+    that:
+      - nextcloud_wipe | bool
+    fail_msg: >-
+      default erases Nextcloud's config and database (users, shares, calendars, contacts)
+      on {{ inventory_hostname }}, and sets its data directory (the users' files) aside as
+      {{ nextcloud_data_dir }}.<date>: pass -e app_wipe=true.
+    quiet: true
+
+- name: default.yml | Stop Nextcloud
+  ansible.builtin.systemd_service:
+    name: "podman-{{ item }}.service"
+    state: stopped
+  loop: "{{ nextcloud_containers | reverse }}"
+
+- name: default.yml | Snapshot the current config and database
+  ansible.builtin.include_tasks: snapshot.yml
+
+- name: default.yml | Erase the config and database
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ nextcloud_html_dir }}"
+    - "{{ nextcloud_db_dir }}"
+
+# The users' files are kept, out of the new install's way
+- name: default.yml | Set the data directory aside
+  ansible.builtin.command:
+    argv:
+      - mv
+      - "{{ nextcloud_data_dir }}"
+      - "{{ nextcloud_data_dir }}.{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+    removes: "{{ nextcloud_data_dir }}"
+
+- name: default.yml | Recreate the data directory
+  ansible.builtin.file:
+    path: "{{ nextcloud_data_dir }}"
+    state: directory
+    owner: "{{ nextcloud_data_owner }}"
+    group: "{{ nextcloud_data_owner }}"
+    mode: "0770"
+
+# The images fill them at start: Nextcloud's code, PostgreSQL's database
+- name: default.yml | Recreate the config and database directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ nextcloud_html_dir }}", mode: "0755"}
+    - {path: "{{ nextcloud_db_dir }}", mode: "0700"}
+
+- name: default.yml | Start Nextcloud
+  ansible.builtin.systemd_service:
+    name: "podman-{{ item }}.service"
+    state: started
+  loop: "{{ nextcloud_containers }}"
+
+- name: default.yml | Connect to Nextcloud
+  ansible.builtin.include_tasks: status.yml
+
+# Empty, even when the store has a saved database
+- name: default.yml | Install Nextcloud
+  ansible.builtin.include_tasks: install.yml

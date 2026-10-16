@@ -1,0 +1,26 @@
+---
+argument_specs:
+  main:
+    short_description: Manage the state of a Transmission container
+    description:
+      - configure sets the session settings from the variables.
+      - backup saves the live values of those settings as YAML and shows their drift from the variables.
+      - default erases Transmission's state (needs transmission_wipe), not the downloads, and starts it again.
+    options:
+      transmission_action:
+        type: str
+        required: true
+        choices: [default, configure, backup]
+        description: What the run does.
+      transmission_wipe:
+        type: bool
+        default: false
+        description: Allow default to erase the state.
+      transmission_settings:
+        type: dict
+        default: {}
+        description: Session settings, by their RPC name.
+      transmission_store_dir:
+        type: str
+        required: true
+        description: This host's transmission directory in the app state store, on the controller.

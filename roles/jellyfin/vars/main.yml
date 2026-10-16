@@ -1,0 +1,21 @@
+---
+# How Ansible identifies itself to Jellyfin, alone to log in, with the token after
+jellyfin_client: >-
+  MediaBrowser Client="Ansible", Device="Ansible", DeviceId="ansible-{{ inventory_hostname }}", Version="1.0"
+jellyfin_api_headers:
+  Authorization: '{{ jellyfin_client }}, Token="{{ jellyfin_token }}"'
+
+# The listed libraries in the format backup saves, paths sorted
+jellyfin_libraries_desired: "{{ jellyfin_libraries_desired_json | from_json }}"
+jellyfin_libraries_desired_json: >-
+  [{% for library in jellyfin_libraries | sort(attribute='name') %}
+  {{ {'name': library.name, 'type': library.type, 'paths': library.paths | sort} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]
+# The live libraries, from GET /Library/VirtualFolders (jellyfin_virtual_folders)
+jellyfin_libraries_state: "{{ jellyfin_libraries_state_json | from_json }}"
+jellyfin_libraries_state_json: >-
+  [{% for library in jellyfin_virtual_folders | sort(attribute='Name') %}
+  {{ {'name': library.Name,
+      'type': library.CollectionType | default('mixed', true),
+      'paths': library.Locations | sort} | to_json }}{{ '' if loop.last else ',' }}
+  {% endfor %}]

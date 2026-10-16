@@ -1,0 +1,44 @@
+---
+argument_specs:
+  main:
+    short_description: Manage the state of a Jellyfin container
+    description:
+      - configure creates the admin user on the first start, adds the libraries and sets the settings from the variables.
+      - backup saves the libraries and the listed settings as YAML and shows their drift from the variables.
+      - default erases Jellyfin's state (needs jellyfin_wipe), not the media, and starts it empty with the admin user.
+    options:
+      jellyfin_action:
+        type: str
+        required: true
+        choices: [default, configure, backup]
+        description: What the run does.
+      jellyfin_wipe:
+        type: bool
+        default: false
+        description: Allow default to erase the state.
+      jellyfin_admin_username:
+        type: str
+        default: admin
+        description: Admin user.
+      jellyfin_admin_password:
+        type: str
+        required: true
+        no_log: true
+        description: Password of the admin user.
+      jellyfin_libraries:
+        type: list
+        elements: dict
+        default: []
+        description: Libraries, by name (see defaults/main.yml).
+      jellyfin_server_config:
+        type: dict
+        default: {}
+        description: Server settings, by their name in /System/Configuration.
+      jellyfin_encoding_config:
+        type: dict
+        default: {}
+        description: Transcoding settings, by their name in /System/Configuration/encoding.
+      jellyfin_store_dir:
+        type: str
+        required: true
+        description: This host's jellyfin directory in the app state store, on the controller.

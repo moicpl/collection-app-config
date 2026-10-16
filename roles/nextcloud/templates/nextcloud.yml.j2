@@ -1,0 +1,7 @@
+---
+# Nextcloud on {{ inventory_hostname }}, saved by the nextcloud role (backup),
+# in the format of its variables (inventory/group_vars/<group>/nextcloud.yml):
+# the live values of the settings listed there, the state of the apps listed
+# there and the app store apps enabled.
+# The passwords are in Bitwarden (nextcloud_admin_password, nextcloud_db_password).
+{{ nextcloud_state | to_nice_yaml(indent=2, sort_keys=false) }}
