@@ -73,9 +73,7 @@ frigate_snapshots:
 frigate_objects:
   track:
     - person
-    - car
-    - dog
-    - cat
+#    - car
 frigate_restream_username: frigate
 
 # Cameras. Each stream becomes a go2rtc stream (the record stream named like
