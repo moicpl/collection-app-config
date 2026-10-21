@@ -9,6 +9,9 @@
 #   backup     save the live settings in the app state store (appstate/,
 #              jellyfin.yml, same format as the inventory) and show their
 #              differences from the inventory, i.e. changes made in Jellyfin's UI
+#   user       create a user (name from -e app_user=<name>, or asked), not an
+#              admin, with its password from Bitwarden (jellyfin_user_<name>_password,
+#              asked or generated when missing); an existing one is left alone
 #   default    erase Jellyfin's config and database (not the media) and start
 #              it empty, with the admin user only; needs -e app_wipe=true
 #
@@ -25,8 +28,8 @@
     - name: jellyfin.yml | Check the action
       ansible.builtin.assert:
         that:
-          - app_action | default('') in ['default', 'configure', 'backup']
-        fail_msg: "Pass -e app_action=default|configure|backup."
+          - app_action | default('') in ['default', 'configure', 'backup', 'user']
+        fail_msg: "Pass -e app_action=default|configure|backup|user."
         quiet: true
       tags: always
 
@@ -42,6 +45,20 @@
         bitwarden_secret_note: "Jellyfin admin user ({{ jellyfin_admin_username }}) on [nixos_arr], created by moicpl.app_config.jellyfin"
         bitwarden_secret_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/jellyfin.yml"
       when: jellyfin_admin_password_bws_id is not defined
+      tags: always
+
+    # app_action=user: the user's login, its password in Bitwarden
+    - name: jellyfin.yml | Name the user to create and get its password
+      ansible.builtin.include_tasks:
+        file: tasks/app_user.yml
+        apply:
+          tags: always
+      vars:
+        app_user_app: jellyfin
+        app_user_label: username
+        app_user_pattern: '^\S.*$'
+        app_user_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/jellyfin.yml"
+      when: app_action == 'user'
       tags: always
 
     - name: jellyfin.yml | Get the secrets from Bitwarden
@@ -71,6 +88,8 @@
         name: moicpl.app_config.jellyfin
       vars:
         jellyfin_action: "{{ app_action }}"
+        jellyfin_user_login: "{{ app_user_login | default('') }}"
+        jellyfin_user_password: "{{ bitwarden_secrets[app_user_secret] if app_action == 'user' else '' }}"
         jellyfin_wipe: "{{ app_wipe | default(false) | bool }}"
         jellyfin_admin_password: "{{ bitwarden_secrets.jellyfin_admin_password }}"
         jellyfin_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/jellyfin"

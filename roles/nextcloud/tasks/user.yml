@@ -1,0 +1,37 @@
+---
+# A user outside the admin group. One that exists is left alone: its password
+# isn't changed.
+- name: user.yml | Connect to Nextcloud
+  ansible.builtin.include_tasks: status.yml
+
+- name: user.yml | Check that Nextcloud is installed
+  ansible.builtin.assert:
+    that:
+      - nextcloud_status.installed
+    fail_msg: "Nextcloud on {{ inventory_hostname }} isn't installed yet: run app_action=configure."
+    quiet: true
+
+- name: user.yml | Read the user
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ + ['user:info', nextcloud_user_login, '--output=json'] }}"
+  register: nextcloud_user_info
+  changed_when: false
+  failed_when: nextcloud_user_info.rc not in [0, 1]
+  check_mode: false
+
+# Nextcloud's password policy may refuse a weak password
+- name: user.yml | Create the user
+  ansible.builtin.command:
+    argv: "{{ nextcloud_occ_pass + ['user:add', '--password-from-env', nextcloud_user_login] }}"
+  environment:
+    OC_PASS: "{{ nextcloud_user_password }}"
+  changed_when: true
+  when: nextcloud_user_info.rc != 0
+  no_log: true
+
+- name: user.yml | Report a user that already exists
+  ansible.builtin.debug:
+    msg: >-
+      {{ nextcloud_user_login }} already exists in Nextcloud on {{ inventory_hostname }}: left alone,
+      its password may differ from the one in Bitwarden.
+  when: nextcloud_user_info.rc == 0

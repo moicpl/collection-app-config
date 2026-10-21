@@ -8,6 +8,9 @@
 #   backup     save the running config.yaml in the app state store (appstate/,
 #              encrypted) and show its differences from the inventory, i.e.
 #              changes made in Frigate's UI, which configure replaces
+#   user       create a viewer user (name from -e app_user=<name>, or asked),
+#              with its password from Bitwarden (frigate_user_<name>_password,
+#              asked or generated when missing); an existing one is left alone
 #   default    erase Frigate's config, database and passwords and start it
 #              empty, with the admin password only; needs -e app_wipe=true
 #              (recordings too with -e frigate_wipe_media=true)
@@ -29,8 +32,8 @@
     - name: frigate.yml | Check the action
       ansible.builtin.assert:
         that:
-          - app_action | default('') in ['default', 'configure', 'backup']
-        fail_msg: "Pass -e app_action=default|configure|backup."
+          - app_action | default('') in ['default', 'configure', 'backup', 'user']
+        fail_msg: "Pass -e app_action=default|configure|backup|user."
         quiet: true
       tags: always
 
@@ -90,6 +93,20 @@
       no_log: true
       tags: always
 
+    # app_action=user: the user's login, its password in Bitwarden
+    - name: frigate.yml | Name the user to create and get its password
+      ansible.builtin.include_tasks:
+        file: tasks/app_user.yml
+        apply:
+          tags: always
+      vars:
+        app_user_app: frigate
+        app_user_label: username
+        app_user_pattern: '^[A-Za-z0-9._]+$'
+        app_user_id_file: "{{ frigate_secrets_file }}"
+      when: app_action == 'user'
+      tags: always
+
     - name: frigate.yml | Get the secrets from Bitwarden
       ansible.builtin.include_role:
         name: bitwarden
@@ -117,6 +134,8 @@
         name: moicpl.app_config.frigate
       vars:
         frigate_action: "{{ app_action }}"
+        frigate_user_login: "{{ app_user_login | default('') }}"
+        frigate_user_password: "{{ bitwarden_secrets[app_user_secret] if app_action == 'user' else '' }}"
         frigate_wipe: "{{ app_wipe | default(false) | bool }}"
         frigate_admin_password: "{{ bitwarden_secrets.frigate_admin_password }}"
         frigate_restream_password: "{{ bitwarden_secrets.frigate_restream_password }}"

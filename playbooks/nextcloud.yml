@@ -11,6 +11,9 @@
 #              settings (nextcloud.yml, same format as the inventory); show
 #              their differences from the inventory, i.e. changes made in
 #              Nextcloud's UI. configure restores the database on a new install.
+#   user       create a user (name from -e app_user=<name>, or asked), not an
+#              admin, with its password from Bitwarden (nextcloud_user_<name>_password,
+#              asked or generated when missing); an existing one is left alone
 #   default    erase Nextcloud's config and database, set the users' files
 #              aside and install it again, with the admin user only; needs
 #              -e app_wipe=true
@@ -30,8 +33,8 @@
     - name: nextcloud.yml | Check the action
       ansible.builtin.assert:
         that:
-          - app_action | default('') in ['default', 'configure', 'backup']
-        fail_msg: "Pass -e app_action=default|configure|backup."
+          - app_action | default('') in ['default', 'configure', 'backup', 'user']
+        fail_msg: "Pass -e app_action=default|configure|backup|user."
         quiet: true
       tags: always
 
@@ -47,6 +50,20 @@
         bitwarden_secret_note: "Nextcloud admin user ({{ nextcloud_admin_username }}) on [nixos_arr], created by moicpl.app_config.nextcloud"
         bitwarden_secret_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/nextcloud.yml"
       when: nextcloud_admin_password_bws_id is not defined
+      tags: always
+
+    # app_action=user: the user's login, its password in Bitwarden
+    - name: nextcloud.yml | Name the user to create and get its password
+      ansible.builtin.include_tasks:
+        file: tasks/app_user.yml
+        apply:
+          tags: always
+      vars:
+        app_user_app: nextcloud
+        app_user_label: username
+        app_user_pattern: "^[A-Za-z0-9 _.@'-]+$"
+        app_user_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/nextcloud.yml"
+      when: app_action == 'user'
       tags: always
 
     - name: nextcloud.yml | Get the secrets from Bitwarden
@@ -78,6 +95,8 @@
         name: moicpl.app_config.nextcloud
       vars:
         nextcloud_action: "{{ app_action }}"
+        nextcloud_user_login: "{{ app_user_login | default('') }}"
+        nextcloud_user_password: "{{ bitwarden_secrets[app_user_secret] if app_action == 'user' else '' }}"
         nextcloud_wipe: "{{ app_wipe | default(false) | bool }}"
         nextcloud_admin_password: "{{ bitwarden_secrets.nextcloud_admin_password }}"
         nextcloud_db_password: "{{ bitwarden_secrets.nextcloud_db_password }}"

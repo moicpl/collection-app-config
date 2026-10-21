@@ -4,6 +4,7 @@
 #   backup     save the live settings in immich_store_dir (immich.yml, in the
 #              format of the variables below) and show how they differ from
 #              the variables (changes made in Immich's UI)
+#   user       create a user, with the password given (an existing one is left alone)
 #   default    erase Immich's database (users, albums, photo metadata), not
 #              the photo files, start it empty with the admin user only
 immich_action: ""
@@ -17,6 +18,13 @@ immich_admin_email: admin@example.com
 immich_admin_name: Admin
 # Secret, read by the playbook from Bitwarden
 immich_admin_password: ""
+
+# user: the user to create (not an admin), by email, its name (default: the
+# email's part before the @) and its password (secret, from Bitwarden, passed
+# by the playbook). One that exists is left alone.
+immich_user_login: ""
+immich_user_name: ""
+immich_user_password: ""
 
 # Settings (Administration > Settings), as the parts that differ from Immich's
 # defaults, in the format of its API (GET /api/system-config/defaults lists

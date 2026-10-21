@@ -1,5 +1,5 @@
 ---
-# Straight in the database (files/admin_password.py): Frigate has no setting for
+# Straight in the database (files/user_password.py): Frigate has no setting for
 # it. Retried while Frigate creates its database after a (re)start.
 - name: admin.yml | Set the admin password
   ansible.builtin.command:
@@ -10,7 +10,10 @@
       - "{{ frigate_container }}"
       - python3
       - -c
-      - "{{ lookup('ansible.builtin.file', 'admin_password.py') }}"
+      - "{{ lookup('ansible.builtin.file', 'user_password.py') }}"
+      - admin
+      - admin
+      - set
     stdin: "{{ frigate_admin_password }}"
     stdin_add_newline: false
   register: frigate_admin

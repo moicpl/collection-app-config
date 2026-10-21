@@ -9,6 +9,9 @@
 #              state store (appstate/, immich.yml, same format as the
 #              inventory) and show their differences from the inventory, i.e.
 #              changes made in Immich's UI
+#   user       create a user (email from -e app_user=<email>, or asked), not an
+#              admin, with its password from Bitwarden (immich_user_<email>_password,
+#              asked or generated when missing); an existing one is left alone
 #   default    erase Immich's database (not the photo files) and start it
 #              empty, with the admin user only; needs -e app_wipe=true
 #
@@ -25,8 +28,8 @@
     - name: immich.yml | Check the action
       ansible.builtin.assert:
         that:
-          - app_action | default('') in ['default', 'configure', 'backup']
-        fail_msg: "Pass -e app_action=default|configure|backup."
+          - app_action | default('') in ['default', 'configure', 'backup', 'user']
+        fail_msg: "Pass -e app_action=default|configure|backup|user."
         quiet: true
       tags: always
 
@@ -42,6 +45,20 @@
         bitwarden_secret_note: "Immich admin user ({{ immich_admin_email }}) on [nixos_arr], created by moicpl.app_config.immich"
         bitwarden_secret_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/immich.yml"
       when: immich_admin_password_bws_id is not defined
+      tags: always
+
+    # app_action=user: the user's login, its password in Bitwarden
+    - name: immich.yml | Name the user to create and get its password
+      ansible.builtin.include_tasks:
+        file: tasks/app_user.yml
+        apply:
+          tags: always
+      vars:
+        app_user_app: immich
+        app_user_label: email
+        app_user_pattern: '^[^@\s]+@[^@\s]+$'
+        app_user_id_file: "{{ ansible_inventory_sources | first }}/group_vars/nixos_arr/immich.yml"
+      when: app_action == 'user'
       tags: always
 
     - name: immich.yml | Get the secrets from Bitwarden
@@ -71,6 +88,8 @@
         name: moicpl.app_config.immich
       vars:
         immich_action: "{{ app_action }}"
+        immich_user_login: "{{ app_user_login | default('') }}"
+        immich_user_password: "{{ bitwarden_secrets[app_user_secret] if app_action == 'user' else '' }}"
         immich_wipe: "{{ app_wipe | default(false) | bool }}"
         immich_admin_password: "{{ bitwarden_secrets.immich_admin_password }}"
         immich_store_dir: "{{ appstate_dir }}/{{ inventory_hostname }}/immich"

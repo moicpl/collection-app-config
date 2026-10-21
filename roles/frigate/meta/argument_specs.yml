@@ -6,11 +6,12 @@ argument_specs:
       - configure writes config.yaml from the variables and sets the admin password.
       - backup saves the running config.yaml, encrypted with sops, and shows its drift from the variables.
       - default erases Frigate's state (needs frigate_wipe) and starts it empty with the admin password.
+      - user creates a viewer user, with the password given; an existing one is left alone.
     options:
       frigate_action:
         type: str
         required: true
-        choices: [default, configure, backup]
+        choices: [default, configure, backup, user]
         description: What the run does.
       frigate_wipe:
         type: bool
@@ -57,3 +58,12 @@ argument_specs:
         type: dict
         default: {}
         description: Merged last into config.yaml.
+      frigate_user_login:
+        type: str
+        default: ""
+        description: Name of the user to create. Required by user.
+      frigate_user_password:
+        type: str
+        default: ""
+        no_log: true
+        description: Password of the user to create. Required by user.

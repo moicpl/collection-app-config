@@ -7,11 +7,12 @@ argument_specs:
       - configure keeps the admin password and sets the settings and apps from the variables.
       - backup saves the database and config.php encrypted with sops, the listed settings and apps as YAML, and shows their drift from the variables.
       - default erases Nextcloud's config and database (needs nextcloud_wipe), sets the users' files aside and installs it again.
+      - user creates a user outside the admin group, with the password given; an existing one is left alone.
     options:
       nextcloud_action:
         type: str
         required: true
-        choices: [default, configure, backup]
+        choices: [default, configure, backup, user]
         description: What the run does.
       nextcloud_wipe:
         type: bool
@@ -77,3 +78,12 @@ argument_specs:
         type: bool
         default: true
         description: On the first start, restore the saved database instead of installing an empty Nextcloud.
+      nextcloud_user_login:
+        type: str
+        default: ""
+        description: Name of the user to create. Required by user.
+      nextcloud_user_password:
+        type: str
+        default: ""
+        no_log: true
+        description: Password of the user to create. Required by user.

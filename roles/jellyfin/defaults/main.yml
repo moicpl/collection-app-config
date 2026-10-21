@@ -6,6 +6,7 @@
 #   backup     save the live settings in jellyfin_store_dir (jellyfin.yml, in
 #              the format of the variables below) and show how they differ from
 #              the variables (changes made in Jellyfin's UI)
+#   user       create a user, with the password given (an existing one is left alone)
 #   default    erase Jellyfin's config and database (not the media), start it
 #              empty with the admin user only
 jellyfin_action: ""
@@ -17,6 +18,11 @@ jellyfin_wipe: false
 jellyfin_admin_username: admin
 # Secret, read by the playbook from Bitwarden
 jellyfin_admin_password: ""
+
+# user: the user to create (not an administrator) and its password (secret,
+# from Bitwarden, passed by the playbook). One that exists is left alone.
+jellyfin_user_login: ""
+jellyfin_user_password: ""
 
 # Libraries, by name: added when missing, with their paths as seen in the
 # container; a listed path missing from a library is added. Libraries and

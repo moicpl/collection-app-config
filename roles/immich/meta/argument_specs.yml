@@ -6,11 +6,12 @@ argument_specs:
       - configure creates the admin user on the first start and sets the settings from the variables.
       - backup saves the settings that differ from Immich's defaults as YAML and shows their drift from the variables.
       - default erases Immich's database (needs immich_wipe), not the photo files, and starts it empty with the admin user.
+      - user creates a user that isn't an admin, with the password given; an existing one is left alone.
     options:
       immich_action:
         type: str
         required: true
-        choices: [default, configure, backup]
+        choices: [default, configure, backup, user]
         description: What the run does.
       immich_wipe:
         type: bool
@@ -37,3 +38,16 @@ argument_specs:
         type: str
         required: true
         description: This host's immich directory in the app state store, on the controller.
+      immich_user_login:
+        type: str
+        default: ""
+        description: Email of the user to create (its login). Required by user.
+      immich_user_password:
+        type: str
+        default: ""
+        no_log: true
+        description: Password of the user to create. Required by user.
+      immich_user_name:
+        type: str
+        default: ""
+        description: Name of the user to create; default, the email's part before the @.

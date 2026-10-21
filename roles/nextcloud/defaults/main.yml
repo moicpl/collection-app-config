@@ -7,6 +7,7 @@
 #              encrypted with sops, and the live settings (nextcloud.yml, in the
 #              format of the variables below), and show how they differ from
 #              the variables (changes made in Nextcloud's UI)
+#   user       create a user, with the password given (an existing one is left alone)
 #   default    erase Nextcloud's config and database, set its data directory
 #              (the users' files) aside, start it empty with the admin user only
 nextcloud_action: ""
@@ -20,6 +21,11 @@ nextcloud_admin_username: admin
 # database's (arr_nix.yml gives it to the PostgreSQL container)
 nextcloud_admin_password: ""
 nextcloud_db_password: ""
+
+# user: the user to create (not in the admin group) and its password (secret,
+# from Bitwarden, passed by the playbook). One that exists is left alone.
+nextcloud_user_login: ""
+nextcloud_user_password: ""
 
 # Names Nextcloud answers to, and its URL in links it makes outside a request
 # (emails, background jobs). Always set.

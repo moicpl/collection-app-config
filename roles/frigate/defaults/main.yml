@@ -4,6 +4,7 @@
 #              restream passwords, and set the admin password
 #   backup     save the running config.yaml in frigate_store_dir (encrypted) and
 #              show how it differs from the one the variables give (UI edits)
+#   user       create a user, with the password given (an existing one is left alone)
 #   default    erase the config and the database, start Frigate empty (its own
 #              default config) with the admin password only
 frigate_action: ""
@@ -19,6 +20,11 @@ frigate_admin_password: ""
 frigate_restream_password: ""
 # Camera passwords: Bitwarden secret name (a camera's password_secret) -> value
 frigate_camera_passwords: {}
+
+# user: the user to create (role viewer) and its password (secret, from
+# Bitwarden, passed by the playbook). One that exists is left alone.
+frigate_user_login: ""
+frigate_user_password: ""
 
 # App state store on the controller: this host's frigate directory, the age
 # recipient (public key) files are encrypted to, and the private key (to compare

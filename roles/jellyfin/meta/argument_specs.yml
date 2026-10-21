@@ -6,11 +6,12 @@ argument_specs:
       - configure creates the admin user on the first start, adds the libraries and sets the settings from the variables.
       - backup saves the libraries and the listed settings as YAML and shows their drift from the variables.
       - default erases Jellyfin's state (needs jellyfin_wipe), not the media, and starts it empty with the admin user.
+      - user creates a user that isn't an administrator, with the password given; an existing one is left alone.
     options:
       jellyfin_action:
         type: str
         required: true
-        choices: [default, configure, backup]
+        choices: [default, configure, backup, user]
         description: What the run does.
       jellyfin_wipe:
         type: bool
@@ -42,3 +43,12 @@ argument_specs:
         type: str
         required: true
         description: This host's jellyfin directory in the app state store, on the controller.
+      jellyfin_user_login:
+        type: str
+        default: ""
+        description: Name of the user to create. Required by user.
+      jellyfin_user_password:
+        type: str
+        default: ""
+        no_log: true
+        description: Password of the user to create. Required by user.

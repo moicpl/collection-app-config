@@ -1,0 +1,45 @@
+---
+# A user that isn't an admin, by email. One that exists is left alone: its
+# password isn't changed.
+- name: user.yml | Connect to Immich
+  ansible.builtin.include_tasks: api.yml
+
+- name: user.yml | Check that Immich is set up
+  ansible.builtin.assert:
+    that:
+      - immich_server_config.json.isInitialized
+    fail_msg: "Immich on {{ inventory_hostname }} has no admin user yet: run app_action=configure."
+    quiet: true
+
+- name: user.yml | Log in
+  ansible.builtin.include_tasks: login.yml
+
+- name: user.yml | Read the users
+  ansible.builtin.uri:
+    url: "{{ immich_url }}/api/admin/users"
+    headers: "{{ immich_api_headers }}"
+  register: immich_users
+  check_mode: false
+
+- name: user.yml | Create the user
+  ansible.builtin.uri:
+    url: "{{ immich_url }}/api/admin/users"
+    method: POST
+    headers: "{{ immich_api_headers }}"
+    body_format: json
+    body:
+      email: "{{ immich_user_login }}"
+      name: "{{ immich_user_name | default(immich_user_login.split('@') | first, true) }}"
+      password: "{{ immich_user_password }}"
+      shouldChangePassword: false
+    status_code: 201
+  changed_when: true
+  when: immich_user_login | lower not in immich_users.json | map(attribute='email') | map('lower')
+  no_log: true
+
+- name: user.yml | Report a user that already exists
+  ansible.builtin.debug:
+    msg: >-
+      {{ immich_user_login }} already exists in Immich on {{ inventory_hostname }}: left alone,
+      its password may differ from the one in Bitwarden.
+  when: immich_user_login | lower in immich_users.json | map(attribute='email') | map('lower')

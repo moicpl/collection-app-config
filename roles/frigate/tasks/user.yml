@@ -1,0 +1,32 @@
+---
+# A viewer (live view and review, no settings), straight in the database like
+# the admin (files/user_password.py). One that exists is left alone: its
+# password isn't changed.
+- name: user.yml | Create the user
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - --interactive
+      - "{{ frigate_container }}"
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', 'user_password.py') }}"
+      - "{{ frigate_user_login }}"
+      - viewer
+      - create
+    stdin: "{{ frigate_user_password }}"
+    stdin_add_newline: false
+  register: frigate_user
+  changed_when: frigate_user.stdout | trim == 'changed'
+  until: frigate_user.rc == 0
+  retries: 30
+  delay: 10
+  no_log: true
+
+- name: user.yml | Report a user that already exists
+  ansible.builtin.debug:
+    msg: >-
+      {{ frigate_user_login }} already exists in Frigate on {{ inventory_hostname }}: left alone,
+      its password may differ from the one in Bitwarden.
+  when: frigate_user.stdout | trim == 'exists'

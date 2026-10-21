@@ -1,0 +1,69 @@
+---
+# app_action=user, in a playbook's pre_tasks: the user to create and its
+# password. The login comes from -e app_user=<login>, or is asked. The password
+# is the Bitwarden secret <app>_user_<login>_password: when the inventory has no
+# ID for it, it is asked (blank: generated) and stored, its ID recorded in
+# app_user_id_file. Sets app_user_login and app_user_secret (the secret's name,
+# its value in bitwarden_secrets).
+#
+# Inputs: app_user_app (immich...), app_user_label (what the login is, for the
+# prompt), app_user_pattern (what a valid login matches), app_user_id_file.
+- name: app_user.yml | Ask for the user to create
+  ansible.builtin.pause:
+    prompt: "{{ app_user_app | capitalize }} user to create, {{ app_user_label }}"
+  register: app_user_input
+  when: app_user | default('') | length == 0
+
+- name: app_user.yml | Name the user and its secret
+  ansible.builtin.set_fact:
+    app_user_login: "{{ app_user_login_value }}"
+    app_user_secret: >-
+      {{ app_user_app }}_user_{{ app_user_login_value | lower | regex_replace('[^a-z0-9]+', '_')
+         | regex_replace('^_+|_+$', '') }}_password
+  vars:
+    app_user_login_value: "{{ (app_user | default('', true) or app_user_input.user_input | default('')) | trim }}"
+
+- name: app_user.yml | Check the user
+  ansible.builtin.assert:
+    that:
+      - app_user_login is match(app_user_pattern)
+    fail_msg: >-
+      "{{ app_user_login }}" isn't a valid {{ app_user_app | capitalize }} {{ app_user_label }}:
+      pass -e app_user=<{{ app_user_label }}>, or enter one at the prompt.
+    quiet: true
+
+# Kept in Bitwarden when the user already has a password there
+- name: app_user.yml | Ask for the user's password
+  ansible.builtin.pause:
+    prompt: "Password of {{ app_user_login }}, stored in Bitwarden as {{ app_user_secret }} (blank: generated)"
+    echo: false
+  register: app_user_password_input
+  when: lookup('ansible.builtin.vars', app_user_secret ~ '_bws_id', default='') | length == 0
+  no_log: true
+
+- name: app_user.yml | Store the user's password in Bitwarden
+  ansible.builtin.include_role:
+    name: bitwarden
+    apply:
+      tags: always
+  vars:
+    bitwarden_action: put
+    bitwarden_secret_name: "{{ app_user_secret }}"
+    bitwarden_secret_content: >-
+      {{ app_user_password_input.user_input
+         if app_user_password_input.user_input | length > 0
+         else lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=24) }}
+    bitwarden_secret_note: >-
+      {{ app_user_app | capitalize }} user {{ app_user_login }} on [{{ ansible_play_hosts | join(', ') }}],
+      created by moicpl.app_config.{{ app_user_app }} (app_action=user)
+    bitwarden_secret_id_file: "{{ app_user_id_file }}"
+  when: app_user_password_input is not skipped
+
+- name: app_user.yml | Get the user's password from Bitwarden
+  ansible.builtin.include_role:
+    name: bitwarden
+    apply:
+      tags: always
+  vars:
+    bitwarden_action: get
+    bitwarden_secret_name: "{{ app_user_secret }}"

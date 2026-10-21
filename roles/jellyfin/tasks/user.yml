@@ -1,0 +1,43 @@
+---
+# A user that isn't an administrator, with Jellyfin's default access (all the
+# libraries). One that exists is left alone: its password isn't changed.
+- name: user.yml | Connect to Jellyfin
+  ansible.builtin.include_tasks: api.yml
+
+- name: user.yml | Check that Jellyfin is set up
+  ansible.builtin.assert:
+    that:
+      - jellyfin_public_info.json.StartupWizardCompleted | default(false)
+    fail_msg: "Jellyfin on {{ inventory_hostname }} has no admin user yet: run app_action=configure."
+    quiet: true
+
+- name: user.yml | Log in
+  ansible.builtin.include_tasks: login.yml
+
+- name: user.yml | Read the users
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Users"
+    headers: "{{ jellyfin_api_headers }}"
+  register: jellyfin_users
+  check_mode: false
+
+- name: user.yml | Create the user
+  ansible.builtin.uri:
+    url: "{{ jellyfin_url }}/Users/New"
+    method: POST
+    headers: "{{ jellyfin_api_headers }}"
+    body_format: json
+    body:
+      Name: "{{ jellyfin_user_login }}"
+      Password: "{{ jellyfin_user_password }}"
+    status_code: 200
+  changed_when: true
+  when: jellyfin_user_login | lower not in jellyfin_users.json | map(attribute='Name') | map('lower')
+  no_log: true
+
+- name: user.yml | Report a user that already exists
+  ansible.builtin.debug:
+    msg: >-
+      {{ jellyfin_user_login }} already exists in Jellyfin on {{ inventory_hostname }}: left alone,
+      its password may differ from the one in Bitwarden.
+  when: jellyfin_user_login | lower in jellyfin_users.json | map(attribute='Name') | map('lower')
